@@ -3,19 +3,19 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import jwt
 from datetime import datetime, timedelta
 import os
+from typing import List
 
 router = APIRouter()
 
 # -----------------------------
 # CONFIG
 # -----------------------------
-ADMIN_EMAIL = "athuldev743@gmail.com"      # change to your admin email
-ADMIN_PASSWORD = "admin123"            # change to your strong password
-ADMIN_SECRET_KEY = "your-secret-key"   # use strong secret in production
+ADMIN_EMAIL = "athuldev743@gmail.com"
+ADMIN_PASSWORD = "admin123"
+ADMIN_SECRET_KEY = "your-secret-key"
 ALGORITHM = "HS256"
 UPLOAD_DIR = "uploaded_images"
 
-# create upload folder if not exists
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # -----------------------------
@@ -62,10 +62,9 @@ async def create_product(
     priority: int = Form(...),
     email: str = Form(...),
     image: UploadFile = File(...),
-    admin=Depends(admin_required)  # only admin can access
+    admin=Depends(admin_required)
 ):
     try:
-        # save uploaded file locally
         file_location = os.path.join(UPLOAD_DIR, image.filename)
         with open(file_location, "wb") as f:
             f.write(await image.read())
@@ -81,3 +80,50 @@ async def create_product(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# -----------------------------
+# GET ALL PRODUCTS (ADMIN VIEW)
+# -----------------------------
+@router.get("/products")
+async def get_admin_products(admin=Depends(admin_required)):
+    # Return all products for admin dashboard
+    # You might want to fetch from database
+    return [
+        {"id": 1, "name": "Product 1", "price": 100, "description": "Test"},
+        {"id": 2, "name": "Product 2", "price": 200, "description": "Test 2"}
+    ]
+
+# -----------------------------
+# UPDATE PRODUCT (ADMIN ONLY)
+# -----------------------------
+@router.put("/products/{product_id}")
+async def update_product(
+    product_id: int,
+    name: str = Form(None),
+    price: float = Form(None),
+    description: str = Form(None),
+    priority: int = Form(None),
+    image: UploadFile = File(None),
+    admin=Depends(admin_required)
+):
+    # Update product logic here
+    return {"message": f"Product {product_id} updated"}
+
+# -----------------------------
+# DELETE PRODUCT (ADMIN ONLY)
+# -----------------------------
+@router.delete("/products/{product_id}")
+async def delete_product(product_id: int, admin=Depends(admin_required)):
+    # Delete product logic here
+    return {"message": f"Product {product_id} deleted"}
+
+# -----------------------------
+# GET ALL ORDERS (ADMIN ONLY)
+# -----------------------------
+@router.get("/orders")
+async def get_admin_orders(admin=Depends(admin_required)):
+    # Return all orders for admin dashboard
+    return [
+        {"id": 1, "customer_email": "user1@example.com", "status": "pending", "total": 300},
+        {"id": 2, "customer_email": "user2@example.com", "status": "completed", "total": 500}
+    ]

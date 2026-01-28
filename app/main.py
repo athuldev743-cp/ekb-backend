@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI,HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from app.auth import router as auth_router
 from app.admin import router as admin_router
 from app.products import router as product_router
@@ -8,11 +9,10 @@ from app.orders import router as order_router
 app = FastAPI()
 
 # -------------------- CORS --------------------
-# FIX: Add all necessary origins and remove trailing slashes
 origins = [
-    "https://ekabhumi.vercel.app",      # Production
-    "http://localhost:3000",            # React dev
-    "http://localhost:5173",            # Vite dev
+    "https://ekabhumi.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:5173",
 ]
 
 app.add_middleware(
@@ -20,9 +20,9 @@ app.add_middleware(
     allow_origins=origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
+    allow_headers=["*"],
     expose_headers=["*"],
-    max_age=600,  # Cache preflight requests for 10 minutes
+    max_age=600,
 )
 
 # -------------------- Routers --------------------
@@ -31,9 +31,19 @@ app.include_router(admin_router, prefix="/admin", tags=["Admin"])
 app.include_router(product_router, prefix="/products", tags=["Products"])
 app.include_router(order_router, prefix="/orders", tags=["Orders"])
 
+# -------------------- Root Redirect --------------------
 @app.get("/")
 async def root():
     return {"message": "EKB Backend API", "status": "running"}
+
+# Remove automatic trailing slash redirects
+@app.get("/{path:path}")
+async def catch_all(path: str):
+    if path.endswith("/"):
+        # Return JSON instead of redirect
+        return {"error": f"Endpoint {path} not found. Try without trailing slash."}
+    # Let FastAPI handle the actual 404
+    raise HTTPException(status_code=404, detail="Not Found")
 
 if __name__ == "__main__":
     import uvicorn
