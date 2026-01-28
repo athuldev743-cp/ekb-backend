@@ -8,28 +8,32 @@ from app.orders import router as order_router
 app = FastAPI()
 
 # -------------------- CORS --------------------
-# This MUST come BEFORE including routers
+# FIX: Add all necessary origins and remove trailing slashes
 origins = [
-    "https://ekabhumi.vercel.app",
-    "http://localhost:3000",  # For React dev server
-    "http://localhost:5173",  # For Vite dev server
+    "https://ekabhumi.vercel.app",      # Production
+    "http://localhost:3000",            # React dev
+    "http://localhost:5173",            # Vite dev
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],  # Add this line to expose all headers
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With"],
+    expose_headers=["*"],
+    max_age=600,  # Cache preflight requests for 10 minutes
 )
 
 # -------------------- Routers --------------------
-# Routers come AFTER CORS middleware
 app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(admin_router, prefix="/admin", tags=["Admin"])
 app.include_router(product_router, prefix="/products", tags=["Products"])
 app.include_router(order_router, prefix="/orders", tags=["Orders"])
+
+@app.get("/")
+async def root():
+    return {"message": "EKB Backend API", "status": "running"}
 
 if __name__ == "__main__":
     import uvicorn
