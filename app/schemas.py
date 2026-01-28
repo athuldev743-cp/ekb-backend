@@ -15,7 +15,7 @@ class UserResponse(BaseModel):
     role: str
 
     class Config:
-        from_attributes = True
+        orm_mode = True  # Changed from from_attributes=True
 
 
 # -------- Auth Response --------
@@ -30,6 +30,7 @@ class AdminCreate(BaseModel):
     name: str
     email: EmailStr
 
+
 class ProductCreate(BaseModel):
     name: str
     description: str
@@ -37,7 +38,7 @@ class ProductCreate(BaseModel):
     stock: int
     category: str
 
+
 class OrderCreate(BaseModel):
     user_id: int
     total_amount: float
-
