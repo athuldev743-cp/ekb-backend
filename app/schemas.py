@@ -1,6 +1,7 @@
-# app/schemas.py - For Pydantic v1
-from pydantic import BaseModel, EmailStr
-from typing import Optional
+# app/schemas.py - Complete version
+from pydantic import BaseModel
+from typing import Optional, List
+from datetime import datetime
 
 # -------- Google Auth Input --------
 class GoogleAuthRequest(BaseModel):
@@ -10,17 +11,22 @@ class GoogleAuthRequest(BaseModel):
 class UserResponse(BaseModel):
     id: int
     name: str
-    email: EmailStr
+    email: str  # Changed from EmailStr to avoid email-validator dependency
     role: str
 
     class Config:
-        orm_mode = True  # Use orm_mode for Pydantic v1
+        orm_mode = True
 
 # -------- Auth Response --------
 class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserResponse
+
+# -------- Optional: Admin Creation --------
+class AdminCreate(BaseModel):
+    name: str
+    email: str
 
 # -------- Product Schemas --------
 class ProductBase(BaseModel):
@@ -33,11 +39,19 @@ class ProductBase(BaseModel):
 class ProductCreate(ProductBase):
     pass
 
+class ProductUpdate(BaseModel):
+    name: Optional[str] = None
+    price: Optional[float] = None
+    description: Optional[str] = None
+    image_url: Optional[str] = None
+    priority: Optional[int] = None
+
 class ProductResponse(ProductBase):
     id: int
+    created_at: Optional[datetime] = None
     
     class Config:
-        orm_mode = True  # Use orm_mode for Pydantic v1
+        orm_mode = True
 
 # -------- Order Schemas --------
 class OrderBase(BaseModel):
@@ -49,9 +63,13 @@ class OrderBase(BaseModel):
 class OrderCreate(OrderBase):
     pass
 
+class OrderUpdate(BaseModel):
+    status: Optional[str] = None
+
 class OrderResponse(OrderBase):
     id: int
     status: str
+    created_at: Optional[datetime] = None
     
     class Config:
-        orm_mode = True  # Use orm_mode for Pydantic v1
+        orm_mode = True
