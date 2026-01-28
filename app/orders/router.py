@@ -3,20 +3,19 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Order
 from app.dependencies.admin import admin_only
+from typing import List
 
 router = APIRouter()
 
-
 # -----------------------------
-# GET ALL ORDERS (ADMIN ONLY)
+# ADMIN: GET ALL ORDERS
 # -----------------------------
-@router.get("/")
+@router.get("/admin")
 def get_all_orders(db: Session = Depends(get_db), admin=Depends(admin_only)):
-    return db.query(Order).all()
-
+    return db.query(Order).order_by(Order.created_at.desc()).all()
 
 # -----------------------------
-# UPDATE ORDER STATUS (ADMIN ONLY)
+# ADMIN: UPDATE ORDER STATUS
 # -----------------------------
 @router.put("/{order_id}/status")
 def update_order_status(
@@ -39,9 +38,25 @@ def update_order_status(
         "status": status
     }
 
+# -----------------------------
+# ADMIN: DELETE ORDER
+# -----------------------------
+@router.delete("/{order_id}")
+def delete_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+    admin=Depends(admin_only)
+):
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    db.delete(order)
+    db.commit()
+    return {"message": "Order deleted successfully"}
 
 # -----------------------------
-# CREATE ORDER (PUBLIC)
+# PUBLIC: CREATE ORDER
 # -----------------------------
 @router.post("/")
 def create_order(
@@ -55,9 +70,20 @@ def create_order(
         user_email=user_email,
         product_name=product_name,
         quantity=quantity,
-        total_price=total_price
+        total_price=total_price,
+        status="pending"  # Add default status
     )
     db.add(order)
     db.commit()
     db.refresh(order)
+    return order
+
+# -----------------------------
+# PUBLIC: GET ORDER (for order confirmation)
+# -----------------------------
+@router.get("/{order_id}")
+def get_order(order_id: int, db: Session = Depends(get_db)):
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
     return order
