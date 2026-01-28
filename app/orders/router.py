@@ -4,7 +4,7 @@ from typing import List
 from app.database import get_db
 from app.models import Order
 from app.schemas import OrderResponse, OrderCreate, OrderUpdate
-from app.dependencies.admin import admin_only
+from app.admin.router import admin_required  # <-- updated import
 
 router = APIRouter()
 
@@ -12,7 +12,7 @@ router = APIRouter()
 # ADMIN ORDER ENDPOINTS (at /admin/orders)
 # -----------------------------
 @router.get("/admin/orders", response_model=List[OrderResponse])
-def get_all_orders(db: Session = Depends(get_db), admin=Depends(admin_only)):
+def get_all_orders(db: Session = Depends(get_db), admin=Depends(admin_required)):
     return db.query(Order).order_by(Order.created_at.desc()).all()
 
 @router.put("/admin/orders/{order_id}/status", response_model=OrderResponse)
@@ -20,7 +20,7 @@ def update_order_status(
     order_id: int,
     order_update: OrderUpdate,
     db: Session = Depends(get_db),
-    admin=Depends(admin_only)
+    admin=Depends(admin_required)
 ):
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
@@ -34,7 +34,7 @@ def update_order_status(
     return order
 
 @router.delete("/admin/orders/{order_id}")
-def delete_order(order_id: int, db: Session = Depends(get_db), admin=Depends(admin_only)):
+def delete_order(order_id: int, db: Session = Depends(get_db), admin=Depends(admin_required)):
     order = db.query(Order).filter(Order.id == order_id).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")

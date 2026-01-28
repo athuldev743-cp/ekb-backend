@@ -1,9 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, status
-from fastapi.security import OAuth2PasswordBearer
-from jose import jwt
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
-from typing import List
+from jose import jwt
 
 router = APIRouter()
 
@@ -14,13 +12,14 @@ ADMIN_EMAIL = "athuldev743@gmail.com"
 ADMIN_PASSWORD = "admin123"
 ADMIN_SECRET_KEY = "your-secret-key"
 ALGORITHM = "HS256"
-UPLOAD_DIR = "uploaded_images"
 
+UPLOAD_DIR = "uploaded_images"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # -----------------------------
-# AUTH DEPENDENCY
+# ADMIN TOKEN DEPENDENCY
 # -----------------------------
+from fastapi.security import OAuth2PasswordBearer
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/admin/login")
 
 def admin_required(token: str = Depends(oauth2_scheme)):
@@ -38,21 +37,15 @@ def admin_required(token: str = Depends(oauth2_scheme)):
 @router.post("/login")
 def admin_login(email: str = Form(...), password: str = Form(...)):
     if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
-        token = jwt.encode(
-            {
-                "sub": email,
-                "role": "admin",
-                "exp": datetime.utcnow() + timedelta(hours=2)
-            },
-            ADMIN_SECRET_KEY,
-            algorithm=ALGORITHM
-        )
+        token = jwt.encode({
+            "sub": email,
+            "role": "admin"
+        }, ADMIN_SECRET_KEY, algorithm=ALGORITHM)
         return {"access_token": token, "token_type": "bearer"}
-    else:
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+    raise HTTPException(status_code=401, detail="Invalid credentials")
 
 # -----------------------------
-# CREATE PRODUCT (ADMIN ONLY)
+# CREATE PRODUCT
 # -----------------------------
 @router.post("/products")
 async def create_product(
@@ -64,37 +57,23 @@ async def create_product(
     image: UploadFile = File(...),
     admin=Depends(admin_required)
 ):
-    try:
-        file_location = os.path.join(UPLOAD_DIR, image.filename)
-        with open(file_location, "wb") as f:
-            f.write(await image.read())
-
-        return {
-            "status": "success",
-            "file_path": file_location,
-            "name": name,
-            "price": price,
-            "description": description,
-            "priority": priority,
-            "email": email
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    file_path = os.path.join(UPLOAD_DIR, image.filename)
+    with open(file_path, "wb") as f:
+        f.write(await image.read())
+    return {"status": "success", "file": file_path}
 
 # -----------------------------
-# GET ALL PRODUCTS (ADMIN VIEW)
+# GET ALL PRODUCTS
 # -----------------------------
 @router.get("/products")
 async def get_admin_products(admin=Depends(admin_required)):
-    # Return all products for admin dashboard
-    # You might want to fetch from database
     return [
         {"id": 1, "name": "Product 1", "price": 100, "description": "Test"},
         {"id": 2, "name": "Product 2", "price": 200, "description": "Test 2"}
     ]
 
 # -----------------------------
-# UPDATE PRODUCT (ADMIN ONLY)
+# UPDATE PRODUCT
 # -----------------------------
 @router.put("/products/{product_id}")
 async def update_product(
@@ -106,23 +85,20 @@ async def update_product(
     image: UploadFile = File(None),
     admin=Depends(admin_required)
 ):
-    # Update product logic here
     return {"message": f"Product {product_id} updated"}
 
 # -----------------------------
-# DELETE PRODUCT (ADMIN ONLY)
+# DELETE PRODUCT
 # -----------------------------
 @router.delete("/products/{product_id}")
 async def delete_product(product_id: int, admin=Depends(admin_required)):
-    # Delete product logic here
     return {"message": f"Product {product_id} deleted"}
 
 # -----------------------------
-# GET ALL ORDERS (ADMIN ONLY)
+# GET ALL ORDERS
 # -----------------------------
 @router.get("/orders")
 async def get_admin_orders(admin=Depends(admin_required)):
-    # Return all orders for admin dashboard
     return [
         {"id": 1, "customer_email": "user1@example.com", "status": "pending", "total": 300},
         {"id": 2, "customer_email": "user2@example.com", "status": "completed", "total": 500}
