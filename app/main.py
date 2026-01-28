@@ -1,12 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-# Import routers
-from app.auth import router as auth_router
-from app.admin import router as admin_router
-from app.products import router as product_router
-from app.orders import router as order_router
-
 app = FastAPI()
 
 # CORS Configuration
@@ -25,11 +19,17 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
-# Include routers
-app.include_router(auth_router, prefix="/auth", tags=["Auth"])
-app.include_router(admin_router, prefix="/admin", tags=["Admin"])
-app.include_router(product_router, prefix="/products", tags=["Products"])
-app.include_router(order_router, prefix="/orders", tags=["Orders"])
+# Import routers
+from app.products import router as product_router
+from app.orders import router as order_router
+from app.admin import router as admin_router
+from app.auth import router as auth_router
+
+# Include routers WITHOUT prefix since they already have full paths
+app.include_router(product_router)
+app.include_router(order_router)
+app.include_router(admin_router, prefix="/admin")
+app.include_router(auth_router, prefix="/auth")
 
 @app.get("/")
 async def root():
