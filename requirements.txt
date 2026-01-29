@@ -13,3 +13,5 @@ google-auth-oauthlib
 google-auth-httplib2
 cloudinary
 psycopg2-binary
+jwt
+python-dotenv
