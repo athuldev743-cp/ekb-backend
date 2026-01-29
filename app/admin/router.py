@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Product
 import os
+from app.cloudinary_setup import upload_to_cloudinary, delete_from_cloudinary
 
 router = APIRouter()
 
@@ -33,27 +34,21 @@ async def create_product(
     price: float = Form(...),
     description: str = Form(...),
     priority: int = Form(...),
-    image: UploadFile = File(...),  # REMOVED: email parameter
+    image: UploadFile = File(...),
     db: Session = Depends(get_db),
     admin=Depends(admin_required)
 ):
     try:
-        # Save image file
-        UPLOAD_DIR = "uploaded_images"
-        os.makedirs(UPLOAD_DIR, exist_ok=True)
+        # Upload image to Cloudinary
+        image_url = await upload_to_cloudinary(image, folder="ekabhumi/products")
         
-        file_path = os.path.join(UPLOAD_DIR, image.filename)
-        with open(file_path, "wb") as f:
-            content = await image.read()
-            f.write(content)
-        
-        # Create product WITHOUT email field
+        # Create product with Cloudinary URL
         product = Product(
             name=name,
             price=price,
             description=description,
             priority=priority,
-            image_url = f"/uploaded_images/{image.filename}"  # Only fields that exist in model
+            image_url=image_url  # Cloudinary URL
         )
         
         db.add(product)
@@ -76,8 +71,6 @@ async def create_product(
     except Exception as e:
         print(f"Error creating product: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create product: {str(e)}")
-
-# -----------------------------
 # GET ALL PRODUCTS (Admin view)
 # -----------------------------
 @router.get("/admin-products")
@@ -110,12 +103,16 @@ def get_admin_products(db: Session = Depends(get_db), admin=Depends(admin_requir
 # DELETE PRODUCT
 # -----------------------------
 @router.delete("/delete-product/{product_id}")
-def delete_product(product_id: int, db: Session = Depends(get_db), admin=Depends(admin_required)):
+async def delete_product(product_id: int, db: Session = Depends(get_db), admin=Depends(admin_required)):
     try:
         product = db.query(Product).filter(Product.id == product_id).first()
         
         if not product:
             raise HTTPException(status_code=404, detail="Product not found")
+        
+        # Delete image from Cloudinary if it exists
+        if product.image_url and "cloudinary.com" in product.image_url:
+            await delete_from_cloudinary(product.image_url)
         
         db.delete(product)
         db.commit()
