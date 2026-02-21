@@ -21,3 +21,4 @@ cloudinary==1.36.0
 jwt
 requests
 pycryptodome
+razorpay==1.4.2
