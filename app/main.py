@@ -35,7 +35,9 @@ from app.orders import router as order_router
 from app.admin import router as admin_router
 from app.auth import router as auth_router
 from app.payments.router import router as payments_router
+from auth.review import router as review_router
 
+app.include_router(review_router)
 app.include_router(product_router)
 app.include_router(order_router)
 app.include_router(admin_router, prefix="/admin")
