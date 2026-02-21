@@ -9,7 +9,7 @@ import json
 import razorpay
 
 from app.database import get_db
-from app.models.order import Order
+from app.models import Order
 
 router = APIRouter(prefix="/payments/razorpay", tags=["Razorpay"])
 
