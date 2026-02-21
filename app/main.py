@@ -34,11 +34,13 @@ from app.products import router as product_router
 from app.orders import router as order_router
 from app.admin import router as admin_router
 from app.auth import router as auth_router
+from app.payments.router import router as payments_router
 
 app.include_router(product_router)
 app.include_router(order_router)
 app.include_router(admin_router, prefix="/admin")
 app.include_router(auth_router, prefix="/auth")
+app.include_router(payments_router)
 
 
 @app.get("/")
