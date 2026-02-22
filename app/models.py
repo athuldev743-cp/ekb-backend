@@ -12,8 +12,14 @@ class User(Base):
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     google_id = Column(String, unique=True, nullable=True)
-    role = Column(String, default="customer")
+
+    # ✅ IMPORTANT: match DB (role default should be "user" not "customer")
+    role = Column(String, default="user", nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    # ✅ ADD THIS (matches DB column you added)
+    password_hash = Column(String(255), nullable=True)
 
 
 class Product(Base):
