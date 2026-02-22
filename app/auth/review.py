@@ -1,6 +1,6 @@
 # auth/review.py
 import os, time
-import jwt
+from jose import jwt
 from fastapi import APIRouter, HTTPException
 
 router = APIRouter()
@@ -23,5 +23,6 @@ def review_login(token: str):
         "exp": int(time.time()) + 30 * 60,
         "iat": int(time.time()),
     }
+
     access_token = jwt.encode(payload, JWT_SECRET, algorithm=ALG)
     return {"access_token": access_token, "token_type": "Bearer"}
