@@ -1,7 +1,7 @@
 # app/admin/router.py
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import text, func
 from fastapi import BackgroundTasks
 from typing import Optional
 
@@ -116,7 +116,13 @@ async def delete_product(product_id: int, db: Session = Depends(get_db), admin=D
 @router.get("/orders")
 def get_admin_orders(db: Session = Depends(get_db), admin=Depends(admin_required)):
     try:
-        orders = db.query(Order).order_by(Order.id.desc()).all()
+        orders = (
+            db.query(Order)
+            .filter(func.lower(Order.payment_status) == "paid")
+            .order_by(Order.id.desc())
+            .all()
+        )
+
         return [
             {
                 "id": o.id,
@@ -171,7 +177,6 @@ def approve_order(
         return {"message": "Order already confirmed"}
 
     order.status = "confirmed"
-    order.payment_status = "paid"
     db.commit()
     db.refresh(order)
 
@@ -249,3 +254,12 @@ async def update_product(
     except Exception as e:
         print(f"Error updating product: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to update product: {str(e)}")
+    
+
+
+@router.delete("/orders/clear-all")
+def clear_all_orders(db: Session = Depends(get_db), admin=Depends(admin_required)):
+    # PostgreSQL/SQLite safe
+    db.execute(text("DELETE FROM orders"))
+    db.commit()
+    return {"ok": True, "message": "All orders deleted"}

@@ -95,7 +95,7 @@ def verify_razorpay_payment(payload: dict, db: Session = Depends(get_db)):
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    # Signature verification logic
+    # Signature verification
     message = f"{rp_order_id}|{rp_payment_id}".encode("utf-8")
     expected = hmac.new(
         RAZORPAY_KEY_SECRET.encode("utf-8"),
@@ -105,18 +105,24 @@ def verify_razorpay_payment(payload: dict, db: Session = Depends(get_db)):
 
     if not hmac.compare_digest(expected, rp_signature):
         order.payment_status = "failed"
+        order.updated_at = datetime.now(timezone.utc)
         db.commit()
         raise HTTPException(status_code=400, detail="Signature verification failed")
 
-    # ✅ SUCCESS: Mark paid and STORE THE IDs
+    # ✅ SUCCESS: mark paid, but do NOT confirm here
     order.payment_status = "paid"
-    order.status = "confirmed"
-    order.razorpay_order_id = rp_order_id      # Store RP Order ID
-    order.razorpay_payment_id = rp_payment_id  # Store RP Payment ID
+
+    # Keep pending until admin approves
+    if not order.status:
+        order.status = "pending"
+
+    # Always store Razorpay IDs
+    order.razorpay_order_id = rp_order_id
+    order.razorpay_payment_id = rp_payment_id
     order.updated_at = datetime.now(timezone.utc)
 
     db.commit()
-    return {"ok": True, "status": "paid"}
+    return {"ok": True, "status": "paid", "dbOrderId": order.id}
 
 
 # ---------------------------------
@@ -158,8 +164,11 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
         if receipt:
             order = db.query(Order).filter(Order.id == int(receipt)).first()
             if order:
-                order.payment_status = "paid"
-                order.updated_at = datetime.now(timezone.utc)
-                db.commit()
+              order.payment_status = "paid"
+    if not order.status:
+        order.status = "pending"
+    order.razorpay_payment_id = entity.get("id") or order.razorpay_payment_id
+    order.updated_at = datetime.now(timezone.utc)
+    db.commit()
 
     return {"ok": True}
