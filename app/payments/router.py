@@ -28,66 +28,56 @@ def _client() -> razorpay.Client:
 # ---------------------------------
 @router.post("/create-order")
 def create_razorpay_order(payload: dict, db: Session = Depends(get_db)):
-    """
-    payload example:
-    {
-      "order_id": 123,          # your DB order id
-      "amount": 499.0,          # INR (float or int) - we convert to paise
-      "email": "a@b.com",
-      "phone": "9999999999"
-    }
-    """
     order_id = payload.get("order_id")
-    amount_inr = payload.get("amount")
     email = payload.get("email")
     phone = payload.get("phone")
 
-    if order_id is None or amount_inr is None:
-        raise HTTPException(status_code=400, detail="order_id and amount are required")
+    if order_id is None:
+        raise HTTPException(status_code=400, detail="order_id is required")
 
-    order = db.query(Order).filter(Order.id == order_id).first()
+    order = db.query(Order).filter(Order.id == int(order_id)).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    # Razorpay expects amount in paise (integer)
+    if str(order.payment_status).lower() == "paid":
+        raise HTTPException(status_code=400, detail="Order already paid")
+
     try:
-        amount_paise = int(round(float(amount_inr) * 100))
+        amount_paise = int(round(float(order.total_amount) * 100))
     except Exception:
-        raise HTTPException(status_code=400, detail="Invalid amount")
+        raise HTTPException(status_code=400, detail="Invalid order total")
 
     if amount_paise <= 0:
         raise HTTPException(status_code=400, detail="Amount must be > 0")
 
     client = _client()
 
-    # receipt is your reference (often your DB order id)
     rp_order = client.order.create(
         {
             "amount": amount_paise,
             "currency": "INR",
-            "receipt": str(order_id),
+            "receipt": str(order.id),
             "notes": {
-                "db_order_id": str(order_id),
-                "customer_email": email or "",
-                "customer_phone": phone or "",
+                "db_order_id": str(order.id),
+                "customer_email": order.customer_email or (email or ""),
+                "customer_phone": order.customer_phone or (phone or ""),
             },
         }
     )
 
-    # OPTIONAL: store razorpay_order_id on your Order model if you have a field for it
-    # order.razorpay_order_id = rp_order["id"]
-    # db.commit()
+    # ✅ store razorpay order id for reconciliation (optional)
+    order.razorpay_order_id = rp_order["id"]
+    order.updated_at = datetime.now(timezone.utc)
+    db.commit()
 
     return {
         "keyId": RAZORPAY_KEY_ID,
         "razorpayOrderId": rp_order["id"],
         "amount": amount_paise,
         "currency": "INR",
-        "dbOrderId": order_id,
-        "prefill": {"email": email, "contact": phone},
+        "dbOrderId": order.id,
+        "prefill": {"email": order.customer_email or email, "contact": order.customer_phone or phone},
     }
-
-
 # ---------------------------------
 # 2) VERIFY PAYMENT SIGNATURE (MANDATORY)
 # ---------------------------------

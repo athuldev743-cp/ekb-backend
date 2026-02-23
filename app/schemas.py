@@ -1,11 +1,11 @@
-# app/schemas.py - Complete version
+# app/schemas.py
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime
 
 # -------- Google Auth Input --------
 class GoogleAuthRequest(BaseModel):
-    id_token: str   # token received from Google frontend
+    id_token: str
 
 # -------- User Output --------
 class UserResponse(BaseModel):
@@ -33,13 +33,12 @@ class ProductBase(BaseModel):
     name: str
     price: float
     description: Optional[str] = ""
-    quantity: Optional[int] = 0 
+    quantity: Optional[int] = 0
     image_url: Optional[str] = ""
     priority: Optional[int] = 100
 
 class ProductCreate(ProductBase):
     pass
-
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
@@ -52,12 +51,26 @@ class ProductUpdate(BaseModel):
 class ProductResponse(ProductBase):
     id: int
     created_at: Optional[datetime] = None
-    
+
     class Config:
         orm_mode = True
 
-# -------- Order Schemas --------
-# -------- Order Schemas --------
+# -----------------------------
+# ORDERS: SAFE PUBLIC INPUT
+# -----------------------------
+class PublicOrderCreate(BaseModel):
+    product_id: int
+    quantity: int = 1
+    customer_name: str
+    customer_email: EmailStr
+    customer_phone: str
+    shipping_address: str
+    pincode: str
+    notes: Optional[str] = None
+
+# -----------------------------
+# ORDERS: INTERNAL/RESPONSE SHAPES
+# -----------------------------
 class OrderBase(BaseModel):
     product_id: int
     product_name: str
@@ -68,12 +81,10 @@ class OrderBase(BaseModel):
     customer_email: str
     customer_phone: str
     shipping_address: str
-    pincode: str  # <--- ✅ ADDED: Required for shipping calculation
+    pincode: str
     notes: Optional[str] = None
     status: Optional[str] = "pending"
     payment_status: Optional[str] = "pending"
-    
-    # ✅ Add these as Optional so OrderResponse can return them
     razorpay_order_id: Optional[str] = None
     razorpay_payment_id: Optional[str] = None
 
@@ -89,6 +100,6 @@ class OrderResponse(OrderBase):
     id: int
     order_date: datetime
     updated_at: datetime
-    
+
     class Config:
         orm_mode = True

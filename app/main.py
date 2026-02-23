@@ -2,18 +2,14 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
-
-# IMPORTANT: import models BEFORE create_all so tables are registered
 from app import models  # noqa: F401
 
 app = FastAPI()
 
-# Create tables when the app starts (not at import time)
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)
 
-# CORS Configuration
 origins = [
     "https://ekabhumi.vercel.app",
     "http://localhost:3000",
@@ -23,20 +19,18 @@ origins = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=r"^https:\/\/.*\.vercel\.app$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
 
-# Import routers
 from app.products import router as product_router
 from app.orders import router as order_router
 from app.admin import router as admin_router
 from app.auth.router import router as auth_router
 from app.payments.router import router as payments_router
-
-
 
 app.include_router(product_router)
 app.include_router(order_router)
@@ -44,7 +38,10 @@ app.include_router(admin_router, prefix="/admin")
 app.include_router(auth_router)
 app.include_router(payments_router)
 
-
 @app.get("/")
-async def root():
+def root():
     return {"message": "EKB Backend API", "status": "running"}
+
+@app.get("/health")
+def health():
+    return {"ok": True}
