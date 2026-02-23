@@ -51,13 +51,19 @@ class Order(Base):
     customer_name = Column(String, nullable=False)
     customer_email = Column(String, nullable=False)
     customer_phone = Column(String, nullable=False)
-    shipping_address = Column(Text, nullable=False)  # Using Text for longer addresses
+    shipping_address = Column(Text, nullable=False)
+    pincode = Column(String(10), nullable=True) # <--- ✅ ADDED: To store the pincode
     notes = Column(Text, nullable=True)
     
     # Order status
     status = Column(String, default="pending")  # pending, confirmed, shipped, delivered, cancelled
     payment_status = Column(String, default="pending")  # pending, paid, failed
-    
+    razorpay_order_id = Column(String, nullable=True, index=True)
+    razorpay_payment_id = Column(String, nullable=True, index=True)
+
+    # Optional: helps for reconciliation
+    payment_method = Column(String, nullable=True) 
+
     # Timestamps
     order_date = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -93,15 +93,6 @@ def create_razorpay_order(payload: dict, db: Session = Depends(get_db)):
 # ---------------------------------
 @router.post("/verify")
 def verify_razorpay_payment(payload: dict, db: Session = Depends(get_db)):
-    """
-    payload example (from frontend success handler):
-    {
-      "dbOrderId": 123,
-      "razorpay_order_id": "order_....",
-      "razorpay_payment_id": "pay_....",
-      "razorpay_signature": "...."
-    }
-    """
     db_order_id = payload.get("dbOrderId")
     rp_order_id = payload.get("razorpay_order_id")
     rp_payment_id = payload.get("razorpay_payment_id")
@@ -114,8 +105,7 @@ def verify_razorpay_payment(payload: dict, db: Session = Depends(get_db)):
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    # Create expected signature: HMAC_SHA256(order_id|payment_id, key_secret)
-    # Razorpay describes server-side signature verification as mandatory :contentReference[oaicite:3]{index=3}
+    # Signature verification logic
     message = f"{rp_order_id}|{rp_payment_id}".encode("utf-8")
     expected = hmac.new(
         RAZORPAY_KEY_SECRET.encode("utf-8"),
@@ -125,17 +115,15 @@ def verify_razorpay_payment(payload: dict, db: Session = Depends(get_db)):
 
     if not hmac.compare_digest(expected, rp_signature):
         order.payment_status = "failed"
-        order.updated_at = datetime.now(timezone.utc)
         db.commit()
         raise HTTPException(status_code=400, detail="Signature verification failed")
 
-    # Mark paid
+    # ✅ SUCCESS: Mark paid and STORE THE IDs
     order.payment_status = "paid"
+    order.status = "confirmed"
+    order.razorpay_order_id = rp_order_id      # Store RP Order ID
+    order.razorpay_payment_id = rp_payment_id  # Store RP Payment ID
     order.updated_at = datetime.now(timezone.utc)
-
-    # OPTIONAL: store IDs if your model has fields
-    # order.razorpay_payment_id = rp_payment_id
-    # order.razorpay_order_id = rp_order_id
 
     db.commit()
     return {"ok": True, "status": "paid"}

@@ -1,32 +1,44 @@
-#orders/router.py
-from fastapi import APIRouter, Depends, HTTPException
+#app/orders/router.py
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Order
 from app.schemas import OrderResponse, OrderCreate
 from datetime import datetime
-from fastapi import Query
 
 router = APIRouter()
 
-# -----------------------------
-# PUBLIC ORDER ENDPOINTS ONLY
-# -----------------------------
+# Helper for backend shipping verification
+def calculate_shipping(pincode: str):
+    if not pincode or len(pincode) < 2:
+        return 100.0
+    prefix = pincode[:2]
+    # Kerala check
+    if prefix in ["67", "68", "69"]:
+        return 50.0
+    # South India check
+    if prefix in ["50", "51", "52", "53", "56", "57", "58", "59", "60", "61", "62", "63", "64"]:
+        return 80.0
+    return 120.0
+
 @router.post("/orders", response_model=OrderResponse)
 def create_order(order_data: OrderCreate, db: Session = Depends(get_db)):
     try:
-        print("🔵 [Backend] Received order data:", order_data.dict())
+        # Calculate shipping on server to prevent price tampering
+        shipping_fee = calculate_shipping(order_data.pincode)
+        verified_total = (order_data.unit_price * order_data.quantity) + shipping_fee
 
         order = Order(
             product_id=order_data.product_id,
             product_name=order_data.product_name,
             quantity=order_data.quantity,
             unit_price=order_data.unit_price,
-            total_amount=order_data.total_amount,
+            total_amount=verified_total, # Use server-verified total
             customer_name=order_data.customer_name,
             customer_email=order_data.customer_email,
             customer_phone=order_data.customer_phone,
             shipping_address=order_data.shipping_address,
+            pincode=order_data.pincode, # ✅ SAVE PINCODE
             notes=order_data.notes or "",
             status=order_data.status or "pending",
             payment_status=order_data.payment_status or "pending",
@@ -37,31 +49,18 @@ def create_order(order_data: OrderCreate, db: Session = Depends(get_db)):
         db.add(order)
         db.commit()
         db.refresh(order)
-
-        print(f"✅ [Backend] Order created successfully: Order ID {order.id}")
         return order
-
     except Exception as e:
         db.rollback()
-        print(f"❌ [Backend] Error creating order: {repr(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to create order: {str(e)}")
-
 
 @router.get("/orders/{order_id}", response_model=OrderResponse)
 def get_order(order_id: int, db: Session = Depends(get_db)):
-    try:
-        order = db.query(Order).filter(Order.id == order_id).first()
-        if not order:
-            raise HTTPException(status_code=404, detail="Order not found")
-        return order
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ [Backend] Error fetching order {order_id}: {repr(e)}")
-        raise HTTPException(status_code=500, detail="Failed to fetch order")
+    order = db.query(Order).filter(Order.id == order_id).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    return order
 
 @router.get("/orders")
 def list_orders(email: str = Query(...), db: Session = Depends(get_db)):
-    orders = db.query(Order).filter(Order.customer_email == email).order_by(Order.id.desc()).all()
-    return orders
+    return db.query(Order).filter(Order.customer_email == email).order_by(Order.id.desc()).all()

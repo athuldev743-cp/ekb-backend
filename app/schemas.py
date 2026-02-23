@@ -57,6 +57,7 @@ class ProductResponse(ProductBase):
         orm_mode = True
 
 # -------- Order Schemas --------
+# -------- Order Schemas --------
 class OrderBase(BaseModel):
     product_id: int
     product_name: str
@@ -67,9 +68,14 @@ class OrderBase(BaseModel):
     customer_email: str
     customer_phone: str
     shipping_address: str
+    pincode: str  # <--- ✅ ADDED: Required for shipping calculation
     notes: Optional[str] = None
     status: Optional[str] = "pending"
     payment_status: Optional[str] = "pending"
+    
+    # ✅ Add these as Optional so OrderResponse can return them
+    razorpay_order_id: Optional[str] = None
+    razorpay_payment_id: Optional[str] = None
 
 class OrderCreate(OrderBase):
     pass
