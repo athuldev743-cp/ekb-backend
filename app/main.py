@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 from app.database import Base, engine
 from app import models  # noqa: F401
 
@@ -37,12 +36,16 @@ from app.orders import router as order_router
 from app.admin import router as admin_router
 from app.auth.router import router as auth_router
 from app.payments.router import router as payments_router
+from app.reviews.router import router as reviews_router
 
+
+app.include_router(reviews_router)
 app.include_router(product_router)
 app.include_router(order_router)
 app.include_router(admin_router, prefix="/admin")
 app.include_router(auth_router)
 app.include_router(payments_router)
+app.include_router(reviews_router)                        # ← NEW
 
 @app.get("/")
 def root():
