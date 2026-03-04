@@ -7,19 +7,16 @@ SQLAlchemy==2.0.46
 psycopg[binary]==3.3.2
 
 python-dotenv==1.0.1
-python-jose[cryptography]==3.3.0
-passlib[bcrypt]==1.7.4
-bcrypt==3.2.2
-python-multipart==0.0.6
+PyJWT==2.9.0
 
+python-multipart==0.0.6
 requests==2.31.0
 
 cloudinary==1.36.0
 razorpay==1.4.2
 
-setuptools<82
-
-jwt
 google-auth
 google-auth-oauthlib
 google-auth-httplib2
+
+setuptools<81

@@ -6,6 +6,12 @@ from app import models  # noqa: F401
 
 app = FastAPI()
 
+import warnings
+warnings.filterwarnings(
+    "ignore",
+    message="pkg_resources is deprecated as an API.*"
+)
+
 @app.on_event("startup")
 def on_startup():
     Base.metadata.create_all(bind=engine)

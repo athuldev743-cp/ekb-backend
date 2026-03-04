@@ -1,19 +1,18 @@
-from pydantic import BaseModel, EmailStr, Field
-from typing import Optional, List
+from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from typing import Optional
 from datetime import datetime
 
 
 # -----------------------------
-# USERS / AUTH (keep simple)
+# USERS / AUTH
 # -----------------------------
 class UserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     name: str
     email: str
     role: str
-
-    class Config:
-        orm_mode = True
 
 
 class AuthResponse(BaseModel):
@@ -49,10 +48,9 @@ class ProductUpdate(BaseModel):
 
 
 class ProductResponse(ProductBase):
-    id: int
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        orm_mode = True
+    id: int
 
 
 # -----------------------------
@@ -73,11 +71,10 @@ class PublicOrderCreate(BaseModel):
 
 # -----------------------------
 # ORDERS: PUBLIC RESPONSE (SAFE)
-# Use this for:
-# - create_order response
-# - get_order by token
 # -----------------------------
 class PublicOrderResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
 
     product_id: int
@@ -95,9 +92,6 @@ class PublicOrderResponse(BaseModel):
     order_date: datetime
     updated_at: datetime
 
-    class Config:
-        orm_mode = True
-
 
 class PublicOrderCreateResponse(BaseModel):
     # Return token only once on order creation.
@@ -107,7 +101,6 @@ class PublicOrderCreateResponse(BaseModel):
 
 # -----------------------------
 # ORDERS: AUTHENTICATED "MY ORDER" RESPONSE (FULL FOR OWNER)
-# Use for /orders/me
 # -----------------------------
 class MyOrderResponse(PublicOrderResponse):
     customer_name: str
@@ -120,7 +113,6 @@ class MyOrderResponse(PublicOrderResponse):
 
 # -----------------------------
 # ORDERS: ADMIN RESPONSE (FULL PII)
-# Use for admin endpoints only
 # -----------------------------
 class AdminOrderResponse(MyOrderResponse):
     pass
