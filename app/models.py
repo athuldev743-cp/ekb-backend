@@ -1,7 +1,6 @@
-#models.py
-from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey, VARCHAR, DateTime, Text
-from sqlalchemy.sql import func
 from datetime import datetime
+
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, VARCHAR, Index
 from app.database import Base
 
 
@@ -9,61 +8,70 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
+
     name = Column(String, nullable=False)
     email = Column(String, unique=True, index=True, nullable=False)
     google_id = Column(String, unique=True, nullable=True)
 
-    # ✅ IMPORTANT: match DB (role default should be "user" not "customer")
-    role = Column(String, default="user", nullable=True)
+    role = Column(String, default="user", nullable=False)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    # ✅ ADD THIS (matches DB column you added)
     password_hash = Column(String(255), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 
 class Product(Base):
     __tablename__ = "products"
 
     id = Column(Integer, primary_key=True, index=True)
+
     name = Column(String, nullable=False)
-    description = Column(String)
+    description = Column(String, nullable=True)
+
     price = Column(Float, nullable=False)
     quantity = Column(Integer, default=0, nullable=False)
-    image_url = Column(VARCHAR)
-    priority = Column(Integer, default=100)
-    #created_at = Column(DateTime, default=datetime.utcnow)
+
+    image_url = Column(VARCHAR, nullable=True)
+    priority = Column(Integer, default=100, nullable=False)
 
 
 class Order(Base):
     __tablename__ = "orders"
 
     id = Column(Integer, primary_key=True, index=True)
-    
-    # Product details
+
+    # Public access token for guest order lookup (do NOT expose email-based lookup)
+    public_token = Column(String(128), nullable=False, index=True, unique=True)
+
+    # Product snapshot
     product_id = Column(Integer, nullable=False)
     product_name = Column(String, nullable=False)
     quantity = Column(Integer, nullable=False, default=1)
     unit_price = Column(Float, nullable=False)
     total_amount = Column(Float, nullable=False)
-    
-    # Customer details (from your frontend form)
+
+    # Customer details
     customer_name = Column(String, nullable=False)
-    customer_email = Column(String, nullable=False)
+    customer_email = Column(String, nullable=False, index=True)
     customer_phone = Column(String, nullable=False)
     shipping_address = Column(Text, nullable=False)
-    pincode = Column(String(10), nullable=True) # <--- ✅ ADDED: To store the pincode
+    pincode = Column(String(10), nullable=True)
     notes = Column(Text, nullable=True)
-    
-    # Order status
-    status = Column(String, default="pending")  # pending, confirmed, shipped, delivered, cancelled
-    payment_status = Column(String, default="pending")  # pending, paid, failed
+
+    # Status
+    status = Column(String, default="pending", nullable=False)          # pending, confirmed, shipped...
+    payment_status = Column(String, default="pending", nullable=False)  # pending, paid, failed
+
     razorpay_order_id = Column(String, nullable=True, index=True)
     razorpay_payment_id = Column(String, nullable=True, index=True)
 
-    # Optional: helps for reconciliation
-    payment_method = Column(String, nullable=True) 
+    payment_method = Column(String, nullable=True)
 
     # Timestamps
-    order_date = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    order_date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+# Optional extra indexes (helps admin/order lookups)
+Index("ix_orders_payment_status", Order.payment_status)
+Index("ix_orders_status", Order.status)

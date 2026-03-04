@@ -1,63 +1,101 @@
-# app/cloudinary_setup.py
+import os
+import re
+import uuid
 import cloudinary
 import cloudinary.uploader
-import cloudinary.api
-from fastapi import UploadFile
-import os
+from fastapi import UploadFile, HTTPException
 
-# Configure Cloudinary
+
+def _require_env(name: str) -> str:
+    val = os.getenv(name)
+    if not val:
+        raise RuntimeError(f"{name} is not set")
+    return val
+
+
+# Configure Cloudinary (fail fast if missing)
 cloudinary.config(
-    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
-    api_key=os.getenv("CLOUDINARY_API_KEY"),
-    api_secret=os.getenv("CLOUDINARY_API_SECRET")
+    cloud_name=_require_env("CLOUDINARY_CLOUD_NAME"),
+    api_key=_require_env("CLOUDINARY_API_KEY"),
+    api_secret=_require_env("CLOUDINARY_API_SECRET"),
+    secure=True,
 )
+
+_FOLDER_RE = re.compile(r"^[a-zA-Z0-9/_-]+$")
+
+
+def _safe_folder(folder: str) -> str:
+    folder = (folder or "").strip().strip("/")
+    if not folder:
+        return "ekabhumi/products"
+    if not _FOLDER_RE.match(folder):
+        # prevent weird chars in folder path
+        return "ekabhumi/products"
+    return folder
+
 
 async def upload_to_cloudinary(file: UploadFile, folder: str = "ekabhumi/products") -> str:
     try:
-        # Read file content
-        file_content = await file.read()
-        
-        # Upload file to Cloudinary
+        folder = _safe_folder(folder)
+
+        # read bytes
+        file_bytes = await file.read()
+        if not file_bytes:
+            raise HTTPException(status_code=400, detail="Empty upload")
+
+        # unique id (no collisions)
+        public_id = str(uuid.uuid4())
+
         result = cloudinary.uploader.upload(
-            file_content,
+            file_bytes,
             folder=folder,
-            public_id=file.filename.split('.')[0],
-            overwrite=True,
-            resource_type="auto"
+            public_id=public_id,
+            overwrite=False,          # do not overwrite existing
+            resource_type="image",    # force image only
         )
-        
-        # Return the secure URL
-        return result.get("secure_url", "")
+
+        url = result.get("secure_url")
+        if not url:
+            raise HTTPException(status_code=500, detail="Cloudinary upload failed")
+
+        return url
+
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Cloudinary upload error: {e}")
-        raise e
+        # don't leak internals to client; raise a clean error
+        raise HTTPException(status_code=500, detail="Cloudinary upload error") from e
+
 
 async def delete_from_cloudinary(image_url: str) -> bool:
     try:
-        if not image_url:
+        if not image_url or "cloudinary.com" not in image_url:
             return True
-            
-        # Extract public_id from Cloudinary URL
-        # Example: https://res.cloudinary.com/cloudname/image/upload/v1234567/folder/filename.jpg
-        if "cloudinary.com" not in image_url:
+
+        # Extract public_id from URL
+        # Works for: .../upload/v123/folder/public_id.ext
+        upload_marker = "/upload/"
+        idx = image_url.find(upload_marker)
+        if idx == -1:
             return True
-            
-        # Get the path after /upload/
-        upload_index = image_url.find("/upload/") + 8
-        path_with_version = image_url[upload_index:]
-        
-        # Remove version if present (v1234567/)
-        if path_with_version.startswith("v"):
-            path_without_version = "/".join(path_with_version.split("/")[1:])
-        else:
-            path_without_version = path_with_version
-        
-        # Remove file extension
-        public_id = path_without_version.split(".")[0]
-        
-        # Delete from Cloudinary
-        result = cloudinary.uploader.destroy(public_id)
-        return result.get("result") == "ok"
-    except Exception as e:
-        print(f"Cloudinary delete error: {e}")
+
+        path = image_url[idx + len(upload_marker):]  # v123/folder/public_id.ext
+        parts = path.split("/")
+
+        # drop version folder if present (v123...)
+        if parts and parts[0].startswith("v") and parts[0][1:].isdigit():
+            parts = parts[1:]
+
+        if not parts:
+            return True
+
+        # remove extension
+        last = parts[-1]
+        public_id_no_ext = last.rsplit(".", 1)[0]
+        public_id = "/".join(parts[:-1] + [public_id_no_ext])
+
+        res = cloudinary.uploader.destroy(public_id, resource_type="image")
+        return (res or {}).get("result") in {"ok", "not found"}
+
+    except Exception:
         return False

@@ -1,8 +1,6 @@
-# app/payments/router.py
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
-import os
 import hmac
 import hashlib
 import json
@@ -13,9 +11,13 @@ from app.models import Order
 
 router = APIRouter(prefix="/payments/razorpay", tags=["Razorpay"])
 
+
+# Read from environment (preferably via app/core/config.py if you add these there)
+import os
 RAZORPAY_KEY_ID = os.getenv("RAZORPAY_KEY_ID")
 RAZORPAY_KEY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")
-RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET")  # optional
+RAZORPAY_WEBHOOK_SECRET = os.getenv("RAZORPAY_WEBHOOK_SECRET")
+
 
 def _client() -> razorpay.Client:
     if not RAZORPAY_KEY_ID or not RAZORPAY_KEY_SECRET:
@@ -23,9 +25,6 @@ def _client() -> razorpay.Client:
     return razorpay.Client(auth=(RAZORPAY_KEY_ID, RAZORPAY_KEY_SECRET))
 
 
-# ---------------------------------
-# 1) CREATE RAZORPAY ORDER (INITIATE)
-# ---------------------------------
 @router.post("/create-order")
 def create_razorpay_order(payload: dict, db: Session = Depends(get_db)):
     order_id = payload.get("order_id")
@@ -39,7 +38,7 @@ def create_razorpay_order(payload: dict, db: Session = Depends(get_db)):
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    if str(order.payment_status).lower() == "paid":
+    if (order.payment_status or "").lower() == "paid":
         raise HTTPException(status_code=400, detail="Order already paid")
 
     try:
@@ -65,8 +64,8 @@ def create_razorpay_order(payload: dict, db: Session = Depends(get_db)):
         }
     )
 
-    # ✅ store razorpay order id for reconciliation (optional)
-    order.razorpay_order_id = rp_order["id"]
+    # Store created Razorpay order id for reconciliation
+    order.razorpay_order_id = rp_order.get("id")
     order.updated_at = datetime.now(timezone.utc)
     db.commit()
 
@@ -78,11 +77,13 @@ def create_razorpay_order(payload: dict, db: Session = Depends(get_db)):
         "dbOrderId": order.id,
         "prefill": {"email": order.customer_email or email, "contact": order.customer_phone or phone},
     }
-# ---------------------------------
-# 2) VERIFY PAYMENT SIGNATURE (MANDATORY)
-# ---------------------------------
+
+
 @router.post("/verify")
 def verify_razorpay_payment(payload: dict, db: Session = Depends(get_db)):
+    if not RAZORPAY_KEY_SECRET:
+        raise HTTPException(status_code=500, detail="Razorpay secret not configured")
+
     db_order_id = payload.get("dbOrderId")
     rp_order_id = payload.get("razorpay_order_id")
     rp_payment_id = payload.get("razorpay_payment_id")
@@ -95,7 +96,15 @@ def verify_razorpay_payment(payload: dict, db: Session = Depends(get_db)):
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    # Signature verification
+    # Idempotency: if already paid, return success
+    if (order.payment_status or "").lower() == "paid":
+        return {"ok": True, "status": "paid", "dbOrderId": order.id}
+
+    # Strong linkage check: the rp_order_id MUST match the one we created for this DB order
+    if order.razorpay_order_id and order.razorpay_order_id != rp_order_id:
+        raise HTTPException(status_code=400, detail="Razorpay order_id mismatch")
+
+    # Signature verification (client-side return verification)
     message = f"{rp_order_id}|{rp_payment_id}".encode("utf-8")
     expected = hmac.new(
         RAZORPAY_KEY_SECRET.encode("utf-8"),
@@ -104,43 +113,30 @@ def verify_razorpay_payment(payload: dict, db: Session = Depends(get_db)):
     ).hexdigest()
 
     if not hmac.compare_digest(expected, rp_signature):
-        order.payment_status = "failed"
+        # Do NOT flip to failed on a single bad attempt; keep pending.
         order.updated_at = datetime.now(timezone.utc)
         db.commit()
         raise HTTPException(status_code=400, detail="Signature verification failed")
 
-    # ✅ SUCCESS: mark paid, but do NOT confirm here
+    # Success
     order.payment_status = "paid"
-
-    # Keep pending until admin approves
     if not order.status:
         order.status = "pending"
-
-    # Always store Razorpay IDs
     order.razorpay_order_id = rp_order_id
     order.razorpay_payment_id = rp_payment_id
     order.updated_at = datetime.now(timezone.utc)
-
     db.commit()
+
     return {"ok": True, "status": "paid", "dbOrderId": order.id}
 
 
-# ---------------------------------
-# 3) WEBHOOK (OPTIONAL BUT RECOMMENDED)
-# ---------------------------------
 @router.post("/webhook")
 async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
-    """
-    Configure webhook in Razorpay dashboard with a secret.
-    Razorpay sends X-Razorpay-Signature header (HMAC SHA256 of raw body using webhook secret). :contentReference[oaicite:4]{index=4}
-    Also handle idempotency using x-razorpay-event-id. :contentReference[oaicite:5]{index=5}
-    """
     if not RAZORPAY_WEBHOOK_SECRET:
         raise HTTPException(status_code=500, detail="Webhook secret not configured")
 
     raw_body = await request.body()
     received_sig = request.headers.get("x-razorpay-signature") or request.headers.get("X-Razorpay-Signature")
-
     if not received_sig:
         raise HTTPException(status_code=400, detail="Missing webhook signature header")
 
@@ -156,19 +152,36 @@ async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
     payload = json.loads(raw_body.decode("utf-8"))
     event = payload.get("event")
 
-    # Example: handle payment.captured (you can expand based on your needs)
-    if event == "payment.captured":
-        entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
-        receipt = entity.get("notes", {}).get("db_order_id") or entity.get("receipt")
+    if event != "payment.captured":
+        return {"ok": True, "ignored": True, "event": event}
 
-        if receipt:
-            order = db.query(Order).filter(Order.id == int(receipt)).first()
-            if order:
-              order.payment_status = "paid"
-    if not order.status:
-        order.status = "pending"
-    order.razorpay_payment_id = entity.get("id") or order.razorpay_payment_id
-    order.updated_at = datetime.now(timezone.utc)
-    db.commit()
+    entity = payload.get("payload", {}).get("payment", {}).get("entity", {})
+    notes = entity.get("notes") or {}
+    receipt = notes.get("db_order_id") or entity.get("receipt")
+    payment_id = entity.get("id")
+    rp_order_id = entity.get("order_id")
+
+    if not receipt:
+        raise HTTPException(status_code=400, detail="Missing db_order_id/receipt")
+
+    order = db.query(Order).filter(Order.id == int(receipt)).first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+
+    # Idempotency: if already paid, don't re-write unnecessarily
+    if (order.payment_status or "").lower() != "paid":
+        # Linkage check if we have rp_order_id
+        if order.razorpay_order_id and rp_order_id and order.razorpay_order_id != rp_order_id:
+            raise HTTPException(status_code=400, detail="Razorpay order_id mismatch")
+
+        order.payment_status = "paid"
+        if not order.status:
+            order.status = "pending"
+        if rp_order_id:
+            order.razorpay_order_id = rp_order_id
+        if payment_id:
+            order.razorpay_payment_id = payment_id
+        order.updated_at = datetime.now(timezone.utc)
+        db.commit()
 
     return {"ok": True}

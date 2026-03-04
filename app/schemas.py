@@ -1,13 +1,11 @@
-# app/schemas.py
-from pydantic import BaseModel, EmailStr
-from typing import Optional
+from pydantic import BaseModel, EmailStr, Field
+from typing import Optional, List
 from datetime import datetime
 
-# -------- Google Auth Input --------
-class GoogleAuthRequest(BaseModel):
-    id_token: str
 
-# -------- User Output --------
+# -----------------------------
+# USERS / AUTH (keep simple)
+# -----------------------------
 class UserResponse(BaseModel):
     id: int
     name: str
@@ -17,18 +15,17 @@ class UserResponse(BaseModel):
     class Config:
         orm_mode = True
 
-# -------- Auth Response --------
+
 class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
-    user: UserResponse
+    role: str
+    expires_in: int
 
-# -------- Optional: Admin Creation --------
-class AdminCreate(BaseModel):
-    name: str
-    email: str
 
-# -------- Product Schemas --------
+# -----------------------------
+# PRODUCTS
+# -----------------------------
 class ProductBase(BaseModel):
     name: str
     price: float
@@ -37,8 +34,10 @@ class ProductBase(BaseModel):
     image_url: Optional[str] = ""
     priority: Optional[int] = 100
 
+
 class ProductCreate(ProductBase):
     pass
+
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
@@ -48,19 +47,69 @@ class ProductUpdate(BaseModel):
     priority: Optional[int] = None
     quantity: Optional[int] = None
 
+
 class ProductResponse(ProductBase):
     id: int
-    created_at: Optional[datetime] = None
 
     class Config:
         orm_mode = True
 
+
 # -----------------------------
-# ORDERS: SAFE PUBLIC INPUT
+# ORDERS: PUBLIC INPUT
 # -----------------------------
 class PublicOrderCreate(BaseModel):
     product_id: int
-    quantity: int = 1
+    quantity: int = Field(default=1, ge=1)
+
+    customer_name: str
+    customer_email: EmailStr
+    customer_phone: str
+
+    shipping_address: str
+    pincode: str
+    notes: Optional[str] = None
+
+
+# -----------------------------
+# ORDERS: PUBLIC RESPONSE (SAFE)
+# Use this for:
+# - create_order response
+# - get_order by token
+# -----------------------------
+class PublicOrderResponse(BaseModel):
+    id: int
+
+    product_id: int
+    product_name: str
+    quantity: int
+    unit_price: float
+    total_amount: float
+
+    status: str
+    payment_status: str
+
+    razorpay_order_id: Optional[str] = None
+    razorpay_payment_id: Optional[str] = None
+
+    order_date: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True
+
+
+class PublicOrderCreateResponse(BaseModel):
+    # Return token only once on order creation.
+    order: PublicOrderResponse
+    public_token: str
+
+
+# -----------------------------
+# ORDERS: AUTHENTICATED "MY ORDER" RESPONSE (FULL FOR OWNER)
+# Use for /orders/me
+# -----------------------------
+class MyOrderResponse(PublicOrderResponse):
     customer_name: str
     customer_email: EmailStr
     customer_phone: str
@@ -68,38 +117,10 @@ class PublicOrderCreate(BaseModel):
     pincode: str
     notes: Optional[str] = None
 
-# -----------------------------
-# ORDERS: INTERNAL/RESPONSE SHAPES
-# -----------------------------
-class OrderBase(BaseModel):
-    product_id: int
-    product_name: str
-    quantity: int = 1
-    unit_price: float
-    total_amount: float
-    customer_name: str
-    customer_email: str
-    customer_phone: str
-    shipping_address: str
-    pincode: str
-    notes: Optional[str] = None
-    status: Optional[str] = "pending"
-    payment_status: Optional[str] = "pending"
-    razorpay_order_id: Optional[str] = None
-    razorpay_payment_id: Optional[str] = None
 
-class OrderCreate(OrderBase):
+# -----------------------------
+# ORDERS: ADMIN RESPONSE (FULL PII)
+# Use for admin endpoints only
+# -----------------------------
+class AdminOrderResponse(MyOrderResponse):
     pass
-
-class OrderUpdate(BaseModel):
-    status: Optional[str] = None
-    payment_status: Optional[str] = None
-    notes: Optional[str] = None
-
-class OrderResponse(OrderBase):
-    id: int
-    order_date: datetime
-    updated_at: datetime
-
-    class Config:
-        orm_mode = True

@@ -1,63 +1,60 @@
-# app/auth/router.py
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from datetime import datetime, timedelta, timezone
 import jwt
-import os
-from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from passlib.context import CryptContext
 
-from app.database import get_db
-from app.models import User
+from google.oauth2 import id_token
+from google.auth.transport import requests
+
+from app.core.config import GOOGLE_CLIENT_ID, ADMIN_EMAIL, SECRET_KEY
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60
+ISSUER = "ekabhumi-backend"
+
 
 class GoogleTokenRequest(BaseModel):
     token: str
 
+
 @router.post("/google")
-def google_login(request: GoogleTokenRequest):
+def google_login(body: GoogleTokenRequest):
+    # Verify Google ID token (audience = your client id)
     try:
-        SECRET_KEY = os.getenv("SECRET_KEY", "test-secret-key-for-development")
-
-        email = None
-        role = "user"
-
-        if len(request.token) > 100:
-            # DEV ONLY: decode without verification
-            try:
-                decoded = jwt.decode(request.token, options={"verify_signature": False})
-                email = decoded.get("email") or decoded.get("sub")
-            except Exception:
-                raise HTTPException(status_code=400, detail="Invalid token")
-        else:
-            # test tokens only
-            if request.token == "test-admin-token":
-                email = "athuldev743@gmail.com"
-            elif request.token == "test-user-token":
-                email = "user@example.com"
-            else:
-                raise HTTPException(status_code=400, detail="Invalid token")
-
-        if not email:
-            raise HTTPException(status_code=400, detail="Invalid token")
-
-        ADMIN_EMAILS = ["athuldev743@gmail.com"]
-        if email in ADMIN_EMAILS:
-            role = "admin"
-
-        jwt_token = jwt.encode(
-            {"sub": email, "role": role, "email": email, "exp": datetime.utcnow() + timedelta(hours=24)},
-            SECRET_KEY,
-            algorithm="HS256",
+        idinfo = id_token.verify_oauth2_token(
+            body.token,
+            requests.Request(),
+            GOOGLE_CLIENT_ID,
         )
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Invalid Google token")
 
-        return {"access_token": jwt_token, "token_type": "bearer", "role": role, "email": email}
+    email = (idinfo.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email not found in Google token")
 
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"Error in google_login: {str(e)}")
-        raise HTTPException(status_code=400, detail="Google login failed")
-    
+    # Minimal role assignment: admin email from env (not hardcoded in code)
+    role = "admin" if ADMIN_EMAIL and email == ADMIN_EMAIL.strip().lower() else "user"
+
+    now = datetime.now(timezone.utc)
+    exp = now + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+
+    claims = {
+        "sub": email,
+        "role": role,
+        "iss": ISSUER,
+        "iat": int(now.timestamp()),
+        "exp": int(exp.timestamp()),
+    }
+
+    access_token = jwt.encode(claims, SECRET_KEY, algorithm=ALGORITHM)
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "role": role,
+        "email": email,
+        "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    }
