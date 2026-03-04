@@ -20,16 +20,16 @@ origins = [
     "http://172.26.224.1:5500",
     "http://localhost:3000",
     "http://localhost:5173",
+    "http://127.0.0.1:5500",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
-    allow_origin_regex=r"^https:\/\/.*\.vercel\.app$",
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
 
 from app.products import router as product_router
