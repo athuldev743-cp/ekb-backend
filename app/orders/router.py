@@ -80,25 +80,7 @@ def create_order(order_data: PublicOrderCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to create order: {str(e)}")
 
 
-@router.get("/orders/{order_id}", response_model=PublicOrderResponse)
-def get_order(
-    order_id: int,
-    token: str = Query(..., min_length=10),
-    db: Session = Depends(get_db),
-):
-    order = (
-        db.query(Order)
-        .filter(Order.id == order_id, Order.public_token == token)
-        .first()
-    )
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
-
-    # Attach product image
-    _attach_product_image(order, db)
-    return order
-
-
+# ✅ /orders/me MUST be before /orders/{order_id}
 @router.get("/orders/me", response_model=list[MyOrderResponse])
 def list_my_orders(db: Session = Depends(get_db), user=Depends(user_required)):
     """

@@ -1,7 +1,4 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# Add these routes to your existing app/admin.py router
-# They handle listing pending reviews and approving/rejecting them.
-# ─────────────────────────────────────────────────────────────────────────────
+
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
