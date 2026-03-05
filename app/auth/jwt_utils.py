@@ -25,21 +25,24 @@ def decode_jwt_from_header(authorization: str | None) -> dict:
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-    # Basic claim validation
     if payload.get("iss") != ISSUER:
         raise HTTPException(status_code=401, detail="Invalid token issuer")
 
     return payload
 
 
-def user_required(authorization: str | None = Header(default=None)) -> dict:
+def user_required(
+    authorization: str | None = Header(default=None, alias="Authorization")
+) -> dict:
     payload = decode_jwt_from_header(authorization)
     if not payload.get("sub"):
         raise HTTPException(status_code=401, detail="Invalid token payload")
     return payload
 
 
-def admin_required(authorization: str | None = Header(default=None)) -> dict:
+def admin_required(
+    authorization: str | None = Header(default=None, alias="Authorization")
+) -> dict:
     payload = decode_jwt_from_header(authorization)
     if payload.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Admin only")
