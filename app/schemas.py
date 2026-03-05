@@ -79,12 +79,21 @@ class PublicOrderResponse(BaseModel):
 
     product_id: int
     product_name: str
+    product_image_url: Optional[str] = None   # ← product photo for tracking page
+
     quantity: int
     unit_price: float
     total_amount: float
 
     status: str
     payment_status: str
+
+    customer_name: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_phone: Optional[str] = None
+    shipping_address: Optional[str] = None
+    pincode: Optional[str] = None
+    notes: Optional[str] = None
 
     razorpay_order_id: Optional[str] = None
     razorpay_payment_id: Optional[str] = None
@@ -108,6 +117,7 @@ class MyOrderResponse(PublicOrderResponse):
     customer_phone: str
     shipping_address: str
     pincode: str
+    product_image_url: Optional[str] = None   # ← product photo for account page
     notes: Optional[str] = None
 
 

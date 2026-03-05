@@ -1,3 +1,4 @@
+# app/orders/router.py
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -10,10 +11,11 @@ from app.schemas import (
     PublicOrderCreate,
     PublicOrderResponse,
     PublicOrderCreateResponse,
-    MyOrderResponse
+    MyOrderResponse,
 )
 
 router = APIRouter()
+
 
 def calculate_shipping(pincode: str):
     if not pincode or len(pincode) < 2:
@@ -44,7 +46,7 @@ def create_order(order_data: PublicOrderCreate, db: Session = Depends(get_db)):
         shipping_fee = calculate_shipping(order_data.pincode)
         verified_total = (unit_price * qty) + float(shipping_fee)
 
-        public_token = secrets.token_urlsafe(32)  # typically > 64 chars
+        public_token = secrets.token_urlsafe(32)
 
         order = Order(
             public_token=public_token,
@@ -79,7 +81,11 @@ def create_order(order_data: PublicOrderCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/orders/{order_id}", response_model=PublicOrderResponse)
-def get_order(order_id: int, token: str = Query(..., min_length=10), db: Session = Depends(get_db)):
+def get_order(
+    order_id: int,
+    token: str = Query(..., min_length=10),
+    db: Session = Depends(get_db),
+):
     order = (
         db.query(Order)
         .filter(Order.id == order_id, Order.public_token == token)
@@ -87,15 +93,48 @@ def get_order(order_id: int, token: str = Query(..., min_length=10), db: Session
     )
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+
+    # Attach product image
+    _attach_product_image(order, db)
     return order
 
 
 @router.get("/orders/me", response_model=list[MyOrderResponse])
 def list_my_orders(db: Session = Depends(get_db), user=Depends(user_required)):
+    """
+    Returns only PAID orders for the logged-in user, newest first.
+    Attaches product image_url from the products table.
+    """
     email = user["sub"]
-    return (
+    orders = (
         db.query(Order)
-        .filter(Order.customer_email == email)
+        .filter(
+            Order.customer_email == email,
+            Order.payment_status == "paid",          # ← only paid orders
+        )
         .order_by(Order.id.desc())
         .all()
     )
+
+    # Attach product images in one query
+    product_ids = list({o.product_id for o in orders if o.product_id})
+    products_map = {}
+    if product_ids:
+        products = db.query(Product).filter(Product.id.in_(product_ids)).all()
+        products_map = {p.id: p for p in products}
+
+    for order in orders:
+        p = products_map.get(order.product_id)
+        order.product_image_url = p.image_url if p else None
+
+    return orders
+
+
+# ── helper ────────────────────────────────────────────────────────────────────
+def _attach_product_image(order: Order, db: Session):
+    """Attach product_image_url as a transient attribute on the order object."""
+    if not order.product_id:
+        order.product_image_url = None
+        return
+    product = db.query(Product).filter(Product.id == order.product_id).first()
+    order.product_image_url = product.image_url if product else None
