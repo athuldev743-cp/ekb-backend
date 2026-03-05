@@ -71,6 +71,7 @@ class PublicOrderCreate(BaseModel):
 
 # -----------------------------
 # ORDERS: PUBLIC RESPONSE (SAFE)
+# Used for guest token-based tracking — all PII fields optional
 # -----------------------------
 class PublicOrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -79,7 +80,7 @@ class PublicOrderResponse(BaseModel):
 
     product_id: int
     product_name: str
-    product_image_url: Optional[str] = None   # ← product photo for tracking page
+    product_image_url: Optional[str] = None
 
     quantity: int
     unit_price: float
@@ -109,16 +110,12 @@ class PublicOrderCreateResponse(BaseModel):
 
 
 # -----------------------------
-# ORDERS: AUTHENTICATED "MY ORDER" RESPONSE (FULL FOR OWNER)
+# ORDERS: AUTHENTICATED "MY ORDER" RESPONSE
+# Inherits all fields from PublicOrderResponse.
+# No redefinition needed — avoids Pydantic Optional→required conflict.
 # -----------------------------
 class MyOrderResponse(PublicOrderResponse):
-    customer_name: str
-    customer_email: EmailStr
-    customer_phone: str
-    shipping_address: str
-    pincode: str
-    product_image_url: Optional[str] = None   # ← product photo for account page
-    notes: Optional[str] = None
+    pass
 
 
 # -----------------------------
