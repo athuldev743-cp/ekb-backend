@@ -17,6 +17,8 @@ def on_startup():
 
 origins = [
     "https://ekabhumi.vercel.app",
+    "https://ekabhumih.in",
+    "https://www.ekabhumih.in",
     "http://172.26.224.1:5500",
     "http://localhost:3000",
     "http://localhost:5173",
