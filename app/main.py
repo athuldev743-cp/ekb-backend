@@ -1,15 +1,15 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine
 from app import models  # noqa: F401
-
-app = FastAPI()
 
 import warnings
 warnings.filterwarnings(
     "ignore",
     message="pkg_resources is deprecated as an API.*"
 )
+
+app = FastAPI()
 
 @app.on_event("startup")
 def on_startup():
@@ -41,25 +41,14 @@ from app.auth.router import router as auth_router
 from app.payments.router import router as payments_router
 from app.reviews.router import router as reviews_router
 
-
 app.include_router(reviews_router)
 app.include_router(product_router)
 app.include_router(order_router)
 app.include_router(admin_router, prefix="/admin")
 app.include_router(auth_router)
 app.include_router(payments_router)
-app.include_router(reviews_router)                        # ← NEW
 
-@app.get("/")
-def root():
-    return {"message": "EKB Backend API", "status": "running"}
-
-
-
-
-
-from fastapi import Response
-
+# ── Root & Health (GET + HEAD for UptimeRobot) ────────────────────────────────
 @app.api_route("/", methods=["GET", "HEAD"])
 def root():
     return {"message": "EKB Backend API", "status": "running"}
@@ -67,4 +56,3 @@ def root():
 @app.api_route("/health", methods=["GET", "HEAD"])
 def health():
     return {"ok": True}
-
