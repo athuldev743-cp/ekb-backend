@@ -37,6 +37,7 @@ app.add_middleware(
 from app.products import router as product_router
 from app.orders import router as order_router
 from app.admin import router as admin_router
+from app.admin.admin_review import router as admin_reviews_router  # ← NEW
 from app.auth.router import router as auth_router
 from app.payments.router import router as payments_router
 from app.reviews.router import router as reviews_router
@@ -45,6 +46,7 @@ app.include_router(reviews_router)
 app.include_router(product_router)
 app.include_router(order_router)
 app.include_router(admin_router, prefix="/admin")
+app.include_router(admin_reviews_router, prefix="/admin")          # ← NEW
 app.include_router(auth_router)
 app.include_router(payments_router)
 
