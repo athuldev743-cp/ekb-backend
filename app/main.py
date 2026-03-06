@@ -54,6 +54,17 @@ app.include_router(reviews_router)                        # ← NEW
 def root():
     return {"message": "EKB Backend API", "status": "running"}
 
-@app.get("/health")
+
+
+
+
+from fastapi import Response
+
+@app.api_route("/", methods=["GET", "HEAD"])
+def root():
+    return {"message": "EKB Backend API", "status": "running"}
+
+@app.api_route("/health", methods=["GET", "HEAD"])
 def health():
     return {"ok": True}
+

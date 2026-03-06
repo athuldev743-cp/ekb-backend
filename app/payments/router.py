@@ -132,70 +132,69 @@ def create_razorpay_order(payload: dict, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/verify")
-def verify_razorpay_payment(payload: dict, db: Session = Depends(get_db)):
-    _, key_secret, _ = _get_env()
-    if not key_secret:
-        raise HTTPException(status_code=500, detail="Razorpay secret not configured")
+@router.post("/create-order")
+def create_razorpay_order(payload: dict, db: Session = Depends(get_db)):
+    key_id, _, _ = _get_env()
+    if not key_id:
+        raise HTTPException(status_code=500, detail="Razorpay key id not configured")
 
-    db_order_id = payload.get("dbOrderId")
-    rp_order_id = payload.get("razorpay_order_id")
-    rp_payment_id = payload.get("razorpay_payment_id")
-    rp_signature = payload.get("razorpay_signature")
+    order_id = payload.get("order_id")
+    email = payload.get("email")
+    phone = payload.get("phone")
 
-    if not all([db_order_id, rp_order_id, rp_payment_id, rp_signature]):
-        raise HTTPException(status_code=400, detail="Missing verification fields")
+    if order_id is None:
+        raise HTTPException(status_code=400, detail="order_id is required")
 
-    order = db.query(Order).filter(Order.id == int(db_order_id)).first()
+    order = db.query(Order).filter(Order.id == int(order_id)).first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
 
-    # Idempotency first
     if (order.payment_status or "").lower() == "paid":
-        return {"ok": True, "status": "paid", "dbOrderId": order.id}
+        raise HTTPException(status_code=400, detail="Order already paid")
 
-    # Prevent replay / mismatch
-    if order.razorpay_payment_id and order.razorpay_payment_id != rp_payment_id:
-        raise HTTPException(status_code=400, detail="Payment id mismatch for this order")
-
-    # Strong linkage check
-    if order.razorpay_order_id and order.razorpay_order_id != rp_order_id:
-        raise HTTPException(status_code=400, detail="Razorpay order_id mismatch")
-
-    # Verify signature from client response
-    if not _verify_client_signature(rp_order_id, rp_payment_id, rp_signature, key_secret):
-        order.updated_at = _now_utc()
-        db.commit()
-        raise HTTPException(status_code=400, detail="Signature verification failed")
-
-    # Strong check: fetch payment from Razorpay
     try:
-        client = _client()
-        payment = client.payment.fetch(rp_payment_id)
-
-        if payment.get("order_id") != rp_order_id:
-            raise HTTPException(status_code=400, detail="Payment order_id mismatch")
-
-        expected_amount = int(
+        amount_paise = int(
             (Decimal(str(order.total_amount)) * Decimal("100"))
             .quantize(Decimal("1"), rounding=ROUND_HALF_UP)
         )
+    except Exception as e:
+        print("INVALID ORDER TOTAL:", e, "order.total_amount=", order.total_amount)
+        raise HTTPException(status_code=400, detail="Invalid order total")
 
-        if int(payment.get("amount", 0)) != expected_amount:
-            raise HTTPException(status_code=400, detail="Payment amount mismatch")
+    if amount_paise <= 0:
+        raise HTTPException(status_code=400, detail="Amount must be > 0")
 
-        if payment.get("status") not in ("captured", "authorized"):
-            raise HTTPException(status_code=400, detail=f"Unexpected payment status: {payment.get('status')}")
+    try:
+        client = _client()
+        rp_order = client.order.create({
+            "amount": amount_paise,
+            "currency": "INR",
+            "receipt": str(order.id),
+            "notes": {
+                "db_order_id": str(order.id),
+                "customer_email": order.customer_email or (email or ""),
+                "customer_phone": order.customer_phone or (phone or ""),
+            },
+        })
+    except Exception as e:
+        print("RAZORPAY ORDER CREATE ERROR:", repr(e))
+        raise HTTPException(status_code=500, detail="Failed to create Razorpay order")
 
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=400, detail="Unable to validate payment with Razorpay")
-
-    _mark_paid(order, rp_order_id, rp_payment_id)
+    order.razorpay_order_id = rp_order.get("id")
+    order.updated_at = _now_utc()
     db.commit()
 
-    return {"ok": True, "status": "paid", "dbOrderId": order.id}
+    return {
+        "keyId": key_id,
+        "razorpayOrderId": rp_order["id"],
+        "amount": amount_paise,
+        "currency": "INR",
+        "dbOrderId": order.id,
+        "prefill": {
+            "email": order.customer_email or email,
+            "contact": order.customer_phone or phone
+        },
+    }
 
 @router.post("/webhook")
 async def razorpay_webhook(request: Request, db: Session = Depends(get_db)):
