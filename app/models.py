@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, VARCHAR, Index, Boolean
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, VARCHAR, Index, Boolean, func
 from app.database import Base
 
 
@@ -94,3 +94,12 @@ Index("ix_orders_payment_status", Order.payment_status)
 Index("ix_orders_status", Order.status)
 Index("ix_reviews_approved", Review.approved)
 Index("ix_blogs_order", Blog.order)
+
+
+class HeroBanner(Base):
+    __tablename__ = "hero_banner"
+
+    id             = Column(Integer, primary_key=True, default=1)
+    desktop_image  = Column(String(500), nullable=True)
+    mobile_image   = Column(String(500), nullable=True)
+    updated_at     = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
