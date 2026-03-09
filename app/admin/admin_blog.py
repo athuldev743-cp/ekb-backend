@@ -8,6 +8,7 @@ from app.models import Blog
 from app.cloudinary_setup import upload_to_cloudinary, delete_from_cloudinary
 from app.auth.jwt_utils import admin_required
 
+# No hardcoded /admin prefix — main.py registers this with prefix="/admin"
 router = APIRouter()
 
 MAX_IMAGE_BYTES   = 5 * 1024 * 1024
@@ -44,28 +45,15 @@ def _blog_dict(b: Blog) -> dict:
     }
 
 
-# ── PUBLIC: only return published blogs ──────────────────────────────────────
+# GET /admin/blogs — all blogs including scheduled
 @router.get("/blogs")
-def list_blogs(db: Session = Depends(get_db)):
-    now = datetime.utcnow()
-    blogs = (
-        db.query(Blog)
-        .filter((Blog.publish_date == None) | (Blog.publish_date <= now))
-        .order_by(Blog.order.asc())
-        .all()
-    )
-    return [_blog_dict(b) for b in blogs]
-
-
-# ── ADMIN: list ALL blogs including scheduled ─────────────────────────────────
-@router.get("/admin/blogs")
 def admin_list_blogs(db: Session = Depends(get_db), admin=Depends(admin_required)):
     blogs = db.query(Blog).order_by(Blog.order.asc()).all()
     return [_blog_dict(b) for b in blogs]
 
 
-# ── ADMIN: create blog ────────────────────────────────────────────────────────
-@router.post("/admin/blogs")
+# POST /admin/blogs — create
+@router.post("/blogs")
 async def create_blog(
     title:        str           = Form(...),
     excerpt:      str           = Form(...),
@@ -73,7 +61,7 @@ async def create_blog(
     read_time:    str           = Form("5 min read"),
     href:         Optional[str] = Form(None),
     order:        int           = Form(1),
-    publish_date: Optional[str] = Form(None),   # ISO string e.g. "2024-06-01T00:00"
+    publish_date: Optional[str] = Form(None),
     image:        Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     admin=Depends(admin_required),
@@ -99,8 +87,8 @@ async def create_blog(
     return {"status": "success", "blog": _blog_dict(blog)}
 
 
-# ── ADMIN: update blog ────────────────────────────────────────────────────────
-@router.put("/admin/blogs/{blog_id}")
+# PUT /admin/blogs/{id} — update
+@router.put("/blogs/{blog_id}")
 async def update_blog(
     blog_id:      int,
     title:        Optional[str] = Form(None),
@@ -127,7 +115,7 @@ async def update_blog(
 
     if publish_date is not None:
         if publish_date == "":
-            blog.publish_date = None  # clear schedule = publish immediately
+            blog.publish_date = None
         else:
             try: blog.publish_date = datetime.fromisoformat(publish_date)
             except ValueError: raise HTTPException(400, "Invalid publish_date format")
@@ -144,8 +132,8 @@ async def update_blog(
     return {"status": "success", "blog": _blog_dict(blog)}
 
 
-# ── ADMIN: delete blog ────────────────────────────────────────────────────────
-@router.delete("/admin/blogs/{blog_id}")
+# DELETE /admin/blogs/{id}
+@router.delete("/blogs/{blog_id}")
 async def delete_blog(
     blog_id: int,
     db: Session = Depends(get_db),

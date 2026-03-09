@@ -1,13 +1,10 @@
-from fastapi import FastAPI, Response
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import Base, engine
 from app import models  # noqa: F401
 
 import warnings
-warnings.filterwarnings(
-    "ignore",
-    message="pkg_resources is deprecated as an API.*"
-)
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated as an API.*")
 
 app = FastAPI()
 
@@ -38,21 +35,51 @@ from app.products import router as product_router
 from app.orders import router as order_router
 from app.admin import router as admin_router
 from app.admin.admin_review import router as admin_reviews_router
-from app.admin.admin_blog import router as blog_router            # NEW
+from app.admin.admin_blog import router as blog_router
 from app.auth.router import router as auth_router
 from app.payments.router import router as payments_router
 from app.reviews.router import router as reviews_router
 
+# Public blog endpoint lives here to keep routing clean
+from sqlalchemy.orm import Session
+from app.database import get_db
+from app.models import Blog
+from fastapi import Depends
+from datetime import datetime
+
+@app.get("/blogs")
+def public_list_blogs(db: Session = Depends(get_db)):
+    now = datetime.utcnow()
+    blogs = (
+        db.query(Blog)
+        .filter((Blog.publish_date == None) | (Blog.publish_date <= now))
+        .order_by(Blog.order.asc())
+        .all()
+    )
+    return [
+        {
+            "id":           b.id,
+            "title":        b.title,
+            "excerpt":      b.excerpt,
+            "category":     b.category,
+            "read_time":    b.read_time,
+            "image_url":    b.image_url or "",
+            "href":         b.href or "",
+            "order":        b.order,
+            "publish_date": b.publish_date.isoformat() if b.publish_date else None,
+        }
+        for b in blogs
+    ]
+
 app.include_router(reviews_router)
 app.include_router(product_router)
 app.include_router(order_router)
-app.include_router(admin_router, prefix="/admin")
+app.include_router(admin_router,         prefix="/admin")
 app.include_router(admin_reviews_router, prefix="/admin")
-app.include_router(blog_router)                                    # NEW — has /blogs and /admin/blogs
+app.include_router(blog_router,          prefix="/admin")  # /admin/blogs, /admin/blogs/{id}
 app.include_router(auth_router)
 app.include_router(payments_router)
 
-# Root & Health
 @app.api_route("/", methods=["GET", "HEAD"])
 def root():
     return {"message": "EKB Backend API", "status": "running"}
