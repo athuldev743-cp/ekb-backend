@@ -77,8 +77,9 @@ class Blog(Base):
     category    = Column(String, nullable=False, default="General")
     read_time   = Column(String, nullable=False, default="5 min read")
     image_url   = Column(VARCHAR, nullable=True)
-    href        = Column(String, nullable=True)   # external "Read More" link
-    order       = Column(Integer, default=1, nullable=False)  # display order (1-4)
+    href        = Column(String, nullable=True)
+    order       = Column(Integer, default=1, nullable=False)
+    publish_date = Column(DateTime, nullable=True)   # None = publish immediately
     created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

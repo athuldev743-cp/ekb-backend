@@ -1,6 +1,7 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from sqlalchemy.orm import Session
 from typing import Optional
+from datetime import datetime
 
 from app.database import get_db
 from app.models import Blog
@@ -29,27 +30,34 @@ async def _validate_image(image: UploadFile) -> None:
 
 def _blog_dict(b: Blog) -> dict:
     return {
-        "id":         b.id,
-        "title":      b.title,
-        "excerpt":    b.excerpt,
-        "category":   b.category,
-        "read_time":  b.read_time,
-        "image_url":  b.image_url or "",
-        "href":       b.href or "",
-        "order":      b.order,
-        "created_at": b.created_at.isoformat() if b.created_at else None,
-        "updated_at": b.updated_at.isoformat() if b.updated_at else None,
+        "id":           b.id,
+        "title":        b.title,
+        "excerpt":      b.excerpt,
+        "category":     b.category,
+        "read_time":    b.read_time,
+        "image_url":    b.image_url or "",
+        "href":         b.href or "",
+        "order":        b.order,
+        "publish_date": b.publish_date.isoformat() if b.publish_date else None,
+        "created_at":   b.created_at.isoformat() if b.created_at else None,
+        "updated_at":   b.updated_at.isoformat() if b.updated_at else None,
     }
 
 
-# ── PUBLIC: list all blogs (for Blog.jsx) ────────────────────────────────────
+# ── PUBLIC: only return published blogs ──────────────────────────────────────
 @router.get("/blogs")
 def list_blogs(db: Session = Depends(get_db)):
-    blogs = db.query(Blog).order_by(Blog.order.asc()).all()
+    now = datetime.utcnow()
+    blogs = (
+        db.query(Blog)
+        .filter((Blog.publish_date == None) | (Blog.publish_date <= now))
+        .order_by(Blog.order.asc())
+        .all()
+    )
     return [_blog_dict(b) for b in blogs]
 
 
-# ── ADMIN: list all blogs ─────────────────────────────────────────────────────
+# ── ADMIN: list ALL blogs including scheduled ─────────────────────────────────
 @router.get("/admin/blogs")
 def admin_list_blogs(db: Session = Depends(get_db), admin=Depends(admin_required)):
     blogs = db.query(Blog).order_by(Blog.order.asc()).all()
@@ -59,13 +67,14 @@ def admin_list_blogs(db: Session = Depends(get_db), admin=Depends(admin_required
 # ── ADMIN: create blog ────────────────────────────────────────────────────────
 @router.post("/admin/blogs")
 async def create_blog(
-    title:     str           = Form(...),
-    excerpt:   str           = Form(...),
-    category:  str           = Form("General"),
-    read_time: str           = Form("5 min read"),
-    href:      Optional[str] = Form(None),
-    order:     int           = Form(1),
-    image:     Optional[UploadFile] = File(None),
+    title:        str           = Form(...),
+    excerpt:      str           = Form(...),
+    category:     str           = Form("General"),
+    read_time:    str           = Form("5 min read"),
+    href:         Optional[str] = Form(None),
+    order:        int           = Form(1),
+    publish_date: Optional[str] = Form(None),   # ISO string e.g. "2024-06-01T00:00"
+    image:        Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     admin=Depends(admin_required),
 ):
@@ -74,9 +83,15 @@ async def create_blog(
         await _validate_image(image)
         image_url = await upload_to_cloudinary(image, folder="ekabhumi/blogs")
 
+    parsed_date = None
+    if publish_date:
+        try: parsed_date = datetime.fromisoformat(publish_date)
+        except ValueError: raise HTTPException(400, "Invalid publish_date format")
+
     blog = Blog(
         title=title, excerpt=excerpt, category=category,
-        read_time=read_time, href=href, order=order, image_url=image_url,
+        read_time=read_time, href=href, order=order,
+        image_url=image_url, publish_date=parsed_date,
     )
     db.add(blog)
     db.commit()
@@ -87,14 +102,15 @@ async def create_blog(
 # ── ADMIN: update blog ────────────────────────────────────────────────────────
 @router.put("/admin/blogs/{blog_id}")
 async def update_blog(
-    blog_id:   int,
-    title:     Optional[str] = Form(None),
-    excerpt:   Optional[str] = Form(None),
-    category:  Optional[str] = Form(None),
-    read_time: Optional[str] = Form(None),
-    href:      Optional[str] = Form(None),
-    order:     Optional[int] = Form(None),
-    image:     Optional[UploadFile] = File(None),
+    blog_id:      int,
+    title:        Optional[str] = Form(None),
+    excerpt:      Optional[str] = Form(None),
+    category:     Optional[str] = Form(None),
+    read_time:    Optional[str] = Form(None),
+    href:         Optional[str] = Form(None),
+    order:        Optional[int] = Form(None),
+    publish_date: Optional[str] = Form(None),
+    image:        Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     admin=Depends(admin_required),
 ):
@@ -108,6 +124,13 @@ async def update_blog(
     if read_time is not None: blog.read_time = read_time
     if href      is not None: blog.href      = href
     if order     is not None: blog.order     = order
+
+    if publish_date is not None:
+        if publish_date == "":
+            blog.publish_date = None  # clear schedule = publish immediately
+        else:
+            try: blog.publish_date = datetime.fromisoformat(publish_date)
+            except ValueError: raise HTTPException(400, "Invalid publish_date format")
 
     if image and image.filename:
         await _validate_image(image)
