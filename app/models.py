@@ -57,24 +57,33 @@ class Review(Base):
     __tablename__ = "reviews"
 
     id = Column(Integer, primary_key=True, index=True)
-
-    # Who wrote it
     user_email = Column(String, nullable=False, index=True)
     user_name = Column(String, nullable=False)
-
-    # What product (optional — None means general store review)
     product_id = Column(Integer, nullable=True, index=True)
     product_name = Column(String, nullable=True)
-
-    rating = Column(Integer, nullable=False)          # 1-5
+    rating = Column(Integer, nullable=False)
     text = Column(Text, nullable=False)
-
-    # Admin approval gate
     approved = Column(Boolean, default=False, nullable=False)
-
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+# ── NEW: Blog model ──────────────────────────────────────────────────────────
+class Blog(Base):
+    __tablename__ = "blogs"
+
+    id          = Column(Integer, primary_key=True, index=True)
+    title       = Column(String, nullable=False)
+    excerpt     = Column(Text, nullable=False)
+    category    = Column(String, nullable=False, default="General")
+    read_time   = Column(String, nullable=False, default="5 min read")
+    image_url   = Column(VARCHAR, nullable=True)
+    href        = Column(String, nullable=True)   # external "Read More" link
+    order       = Column(Integer, default=1, nullable=False)  # display order (1-4)
+    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 Index("ix_orders_payment_status", Order.payment_status)
 Index("ix_orders_status", Order.status)
 Index("ix_reviews_approved", Review.approved)
+Index("ix_blogs_order", Blog.order)
