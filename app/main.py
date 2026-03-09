@@ -54,22 +54,24 @@ def public_list_blogs(db: Session = Depends(get_db)):
         db.query(Blog)
         .filter((Blog.publish_date == None) | (Blog.publish_date <= now))
         .order_by(Blog.order.asc())
+        .limit(4)
         .all()
     )
     return [
         {
-            "id":           b.id,
-            "title":        b.title,
-            "excerpt":      b.excerpt,
-            "category":     b.category,
-            "read_time":    b.read_time,
-            "image_url":    b.image_url or "",
-            "href":         b.href or "",
-            "order":        b.order,
+            "id": b.id,
+            "title": b.title,
+            "excerpt": b.excerpt,
+            "category": b.category,
+            "read_time": b.read_time,
+            "image_url": b.image_url or "",
+            "href": b.href or "",
+            "order": b.order,
             "publish_date": b.publish_date.isoformat() if b.publish_date else None,
         }
         for b in blogs
     ]
+
 
 app.include_router(reviews_router)
 app.include_router(product_router)

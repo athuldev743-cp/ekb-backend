@@ -71,17 +71,23 @@ class Review(Base):
 class Blog(Base):
     __tablename__ = "blogs"
 
-    id          = Column(Integer, primary_key=True, index=True)
-    title       = Column(String, nullable=False)
-    excerpt     = Column(Text, nullable=False)
-    category    = Column(String, nullable=False, default="General")
-    read_time   = Column(String, nullable=False, default="5 min read")
-    image_url   = Column(VARCHAR, nullable=True)
-    href        = Column(String, nullable=True)
-    order       = Column(Integer, default=1, nullable=False)
-    publish_date = Column(DateTime, nullable=True)   # None = publish immediately
-    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    id = Column(Integer, primary_key=True, index=True)
+
+    title = Column(String, nullable=False)
+    excerpt = Column(Text, nullable=False)
+
+    category = Column(String, nullable=False, default="General")
+    read_time = Column(String, nullable=False, default="5 min read")
+
+    image_url = Column(String, nullable=True)
+    href = Column(String, nullable=True)
+
+    order = Column(Integer, default=1, nullable=False, index=True)
+
+    publish_date = Column(DateTime, nullable=True)  # None = publish immediately
+
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 Index("ix_orders_payment_status", Order.payment_status)

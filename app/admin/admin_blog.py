@@ -52,20 +52,31 @@ def admin_list_blogs(db: Session = Depends(get_db), admin=Depends(admin_required
     return [_blog_dict(b) for b in blogs]
 
 
+
+
+
+
 # POST /admin/blogs — create
 @router.post("/blogs")
 async def create_blog(
-    title:        str           = Form(...),
-    excerpt:      str           = Form(...),
-    category:     str           = Form("General"),
-    read_time:    str           = Form("5 min read"),
-    href:         Optional[str] = Form(None),
-    order:        int           = Form(1),
+    title: str = Form(...),
+    excerpt: str = Form(...),
+    category: str = Form("General"),
+    read_time: str = Form("5 min read"),
+    href: Optional[str] = Form(None),
+    order: int = Form(1),
     publish_date: Optional[str] = Form(None),
-    image:        Optional[UploadFile] = File(None),
+    image: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     admin=Depends(admin_required),
 ):
+    if order < 1 or order > 4:
+        raise HTTPException(400, "Order must be between 1 and 4")
+
+    existing = db.query(Blog).filter(Blog.order == order).first()
+    if existing:
+        raise HTTPException(400, "This blog slot is already used")
+
     image_url = None
     if image and image.filename:
         await _validate_image(image)
@@ -73,32 +84,37 @@ async def create_blog(
 
     parsed_date = None
     if publish_date:
-        try: parsed_date = datetime.fromisoformat(publish_date)
-        except ValueError: raise HTTPException(400, "Invalid publish_date format")
+        try:
+            parsed_date = datetime.fromisoformat(publish_date)
+        except ValueError:
+            raise HTTPException(400, "Invalid publish_date format")
 
     blog = Blog(
-        title=title, excerpt=excerpt, category=category,
-        read_time=read_time, href=href, order=order,
-        image_url=image_url, publish_date=parsed_date,
+        title=title.strip(),
+        excerpt=excerpt.strip(),
+        category=category.strip() or "General",
+        read_time=read_time.strip() or "5 min read",
+        href=href.strip() if href else None,
+        order=order,
+        image_url=image_url,
+        publish_date=parsed_date,
     )
     db.add(blog)
     db.commit()
     db.refresh(blog)
     return {"status": "success", "blog": _blog_dict(blog)}
-
-
 # PUT /admin/blogs/{id} — update
 @router.put("/blogs/{blog_id}")
 async def update_blog(
-    blog_id:      int,
-    title:        Optional[str] = Form(None),
-    excerpt:      Optional[str] = Form(None),
-    category:     Optional[str] = Form(None),
-    read_time:    Optional[str] = Form(None),
-    href:         Optional[str] = Form(None),
-    order:        Optional[int] = Form(None),
+    blog_id: int,
+    title: Optional[str] = Form(None),
+    excerpt: Optional[str] = Form(None),
+    category: Optional[str] = Form(None),
+    read_time: Optional[str] = Form(None),
+    href: Optional[str] = Form(None),
+    order: Optional[int] = Form(None),
     publish_date: Optional[str] = Form(None),
-    image:        Optional[UploadFile] = File(None),
+    image: Optional[UploadFile] = File(None),
     db: Session = Depends(get_db),
     admin=Depends(admin_required),
 ):
@@ -106,31 +122,53 @@ async def update_blog(
     if not blog:
         raise HTTPException(404, "Blog not found")
 
-    if title     is not None: blog.title     = title
-    if excerpt   is not None: blog.excerpt   = excerpt
-    if category  is not None: blog.category  = category
-    if read_time is not None: blog.read_time = read_time
-    if href      is not None: blog.href      = href
-    if order     is not None: blog.order     = order
+    if order is not None:
+        if order < 1 or order > 4:
+            raise HTTPException(400, "Order must be between 1 and 4")
+
+        existing = (
+            db.query(Blog)
+            .filter(Blog.order == order, Blog.id != blog_id)
+            .first()
+        )
+        if existing:
+            raise HTTPException(400, "This blog slot is already used")
+
+        blog.order = order
+
+    if title is not None:
+        blog.title = title.strip()
+    if excerpt is not None:
+        blog.excerpt = excerpt.strip()
+    if category is not None:
+        blog.category = category.strip()
+    if read_time is not None:
+        blog.read_time = read_time.strip()
+    if href is not None:
+        blog.href = href.strip() or None
 
     if publish_date is not None:
         if publish_date == "":
             blog.publish_date = None
         else:
-            try: blog.publish_date = datetime.fromisoformat(publish_date)
-            except ValueError: raise HTTPException(400, "Invalid publish_date format")
+            try:
+                blog.publish_date = datetime.fromisoformat(publish_date)
+            except ValueError:
+                raise HTTPException(400, "Invalid publish_date format")
 
     if image and image.filename:
         await _validate_image(image)
         if blog.image_url and "cloudinary.com" in blog.image_url:
-            try: await delete_from_cloudinary(blog.image_url)
-            except Exception: pass
+            try:
+                await delete_from_cloudinary(blog.image_url)
+            except Exception:
+                pass
         blog.image_url = await upload_to_cloudinary(image, folder="ekabhumi/blogs")
 
+    blog.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(blog)
     return {"status": "success", "blog": _blog_dict(blog)}
-
 
 # DELETE /admin/blogs/{id}
 @router.delete("/blogs/{blog_id}")
