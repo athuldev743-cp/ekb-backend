@@ -1,14 +1,17 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
 from typing import Optional
-import time
 
 from app.database import get_db
 from app.models import HeroBanner
 from app.cloudinary_setup import upload_to_cloudinary, delete_from_cloudinary
 from app.auth.jwt_utils import admin_required
 
-router = APIRouter()
+# Two separate routers so main.py can include each with its own prefix:
+#   public_router → no prefix    → GET  /hero-banner
+#   admin_router  → prefix=/admin → PUT /admin/hero-banner
+public_router = APIRouter()
+admin_router  = APIRouter()
 
 ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB
@@ -26,10 +29,9 @@ async def _validate_image(image: UploadFile) -> None:
     await image.seek(0)
 
 
-# ─────────────────────────────────────────────
-# GET /hero-banner  — public, no auth required
-# ─────────────────────────────────────────────
-@router.get("/hero-banner")
+# ── PUBLIC ─────────────────────────────────────────────────────────────────
+# Final URL: GET /hero-banner
+@public_router.get("/hero-banner")
 def get_hero_banner(db: Session = Depends(get_db)):
     banner = db.query(HeroBanner).filter(HeroBanner.id == 1).first()
     if not banner:
@@ -40,10 +42,9 @@ def get_hero_banner(db: Session = Depends(get_db)):
     }
 
 
-# ─────────────────────────────────────────────
-# PUT /admin/hero-banner  — admin only
-# ─────────────────────────────────────────────
-@router.put("/hero-banner")
+# ── ADMIN ──────────────────────────────────────────────────────────────────
+# Final URL: PUT /admin/hero-banner  (prefix="/admin" applied in main.py)
+@admin_router.put("/hero-banner")
 async def update_hero_banner(
     desktop_image: Optional[UploadFile] = File(None),
     mobile_image:  Optional[UploadFile] = File(None),
@@ -53,7 +54,6 @@ async def update_hero_banner(
     if not desktop_image and not mobile_image:
         raise HTTPException(status_code=400, detail="Provide at least one image")
 
-    # Fetch or create the single banner row
     banner = db.query(HeroBanner).filter(HeroBanner.id == 1).first()
     if not banner:
         banner = HeroBanner(id=1)
@@ -63,7 +63,6 @@ async def update_hero_banner(
 
     if desktop_image:
         await _validate_image(desktop_image)
-        # Delete old Cloudinary asset if present
         if banner.desktop_image and "cloudinary.com" in (banner.desktop_image or ""):
             try:
                 await delete_from_cloudinary(banner.desktop_image)
