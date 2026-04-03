@@ -50,6 +50,7 @@ async def _validate_image_upload(image: UploadFile) -> None:
 async def create_product(
     name: str = Form(...),
     price: float = Form(...),
+    original_price: Optional[float] = Form(None),
     description: str = Form(...),
     priority: int = Form(...),
     quantity: int = Form(0),
@@ -58,13 +59,45 @@ async def create_product(
     admin=Depends(admin_required),
 ):
     try:
+        # -----------------------------
+        # VALIDATION (CRITICAL)
+        # -----------------------------
+        if not name.strip():
+            raise HTTPException(status_code=400, detail="Name is required")
+
+        if price <= 0:
+            raise HTTPException(status_code=400, detail="Price must be greater than 0")
+
+        if original_price is not None:
+            if original_price < price:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Original price must be greater than or equal to selling price"
+                )
+
+        if quantity < 0:
+            raise HTTPException(status_code=400, detail="Quantity cannot be negative")
+
+        if priority not in [1, 2]:
+            priority = 2  # fallback
+
+        if not description.strip():
+            raise HTTPException(status_code=400, detail="Description is required")
+
+        # -----------------------------
+        # IMAGE VALIDATION + UPLOAD
+        # -----------------------------
         await _validate_image_upload(image)
         image_url = await upload_to_cloudinary(image, folder="ekabhumi/products")
 
+        # -----------------------------
+        # CREATE PRODUCT
+        # -----------------------------
         product = Product(
-            name=name,
+            name=name.strip(),
             price=price,
-            description=description,
+            original_price=original_price,  # ✅ FIXED
+            description=description.strip(),
             priority=priority,
             quantity=quantity,
             image_url=image_url,
@@ -74,6 +107,15 @@ async def create_product(
         db.commit()
         db.refresh(product)
 
+        # -----------------------------
+        # OPTIONAL: DISCOUNT CALCULATION
+        # -----------------------------
+        discount_percent = (
+            round((product.original_price - product.price) / product.original_price * 100)
+            if product.original_price and product.price
+            else 0
+        )
+
         return {
             "status": "success",
             "message": "Product created",
@@ -81,6 +123,8 @@ async def create_product(
                 "id": product.id,
                 "name": product.name,
                 "price": float(product.price),
+                "original_price": float(product.original_price) if product.original_price else None,
+                "discount_percent": discount_percent,
                 "description": product.description or "",
                 "priority": product.priority,
                 "quantity": int(product.quantity or 0),
@@ -92,28 +136,47 @@ async def create_product(
         raise
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to create product: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create product: {str(e)}"
+        )
 
 
 # -----------------------------
 # GET ALL PRODUCTS (Admin view)
 # -----------------------------
 @router.get("/admin-products")
-def get_admin_products(db: Session = Depends(get_db), admin=Depends(admin_required)):
+def get_admin_products(
+    db: Session = Depends(get_db),
+    admin=Depends(admin_required)
+):
     products = db.query(Product).order_by(Product.priority.asc()).all()
-    return [
-        {
+
+    result = []
+    for p in products:
+        price = float(p.price) if p.price else 0.0
+        original_price = float(p.original_price) if p.original_price else None
+
+        # ✅ Discount calculation
+        discount_percent = (
+            round((original_price - price) / original_price * 100)
+            if original_price and original_price > price
+            else 0
+        )
+
+        result.append({
             "id": p.id,
             "name": p.name,
-            "price": float(p.price) if p.price else 0.0,
+            "price": price,
+            "original_price": original_price,  # ✅ FIXED
+            "discount_percent": discount_percent,  # ✅ ADDED
             "description": p.description or "",
             "image_url": p.image_url or "",
             "quantity": int(p.quantity or 0),
-            "priority": p.priority or 100,
-        }
-        for p in products
-    ]
+            "priority": p.priority if p.priority in [1, 2] else 2,  # safer
+        })
 
+    return result
 
 # -----------------------------
 # UPDATE PRODUCT
@@ -123,6 +186,7 @@ async def update_product(
     product_id: int,
     name: Optional[str] = Form(None),
     price: Optional[float] = Form(None),
+    original_price: Optional[float] = Form(None),  # ✅ ADDED
     description: Optional[str] = Form(None),
     priority: Optional[int] = Form(None),
     quantity: Optional[int] = Form(None),
@@ -134,17 +198,62 @@ async def update_product(
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
 
+    # -----------------------------
+    # VALIDATION (BEFORE UPDATE)
+    # -----------------------------
+    if price is not None:
+        if price <= 0:
+            raise HTTPException(status_code=400, detail="Price must be greater than 0")
+
+    # Determine final values for validation
+    final_price = price if price is not None else product.price
+    final_original_price = (
+        original_price if original_price is not None else product.original_price
+    )
+
+    if final_original_price is not None:
+        if final_original_price < final_price:
+            raise HTTPException(
+                status_code=400,
+                detail="Original price must be greater than or equal to selling price"
+            )
+
+    if quantity is not None and quantity < 0:
+        raise HTTPException(status_code=400, detail="Quantity cannot be negative")
+
+    if priority is not None and priority not in [1, 2]:
+        priority = 2
+
+    if name is not None and not name.strip():
+        raise HTTPException(status_code=400, detail="Name cannot be empty")
+
+    if description is not None and not description.strip():
+        raise HTTPException(status_code=400, detail="Description cannot be empty")
+
+    # -----------------------------
+    # APPLY UPDATES
+    # -----------------------------
     if name is not None:
-        product.name = name
+        product.name = name.strip()
+
     if price is not None:
         product.price = price
+
+    if original_price is not None:
+        product.original_price = original_price  # ✅ FIXED
+
     if description is not None:
-        product.description = description
+        product.description = description.strip()
+
     if priority is not None:
         product.priority = priority
+
     if quantity is not None:
         product.quantity = quantity
 
+    # -----------------------------
+    # IMAGE HANDLING
+    # -----------------------------
     if image is not None:
         await _validate_image_upload(image)
 
@@ -152,13 +261,23 @@ async def update_product(
             try:
                 await delete_from_cloudinary(product.image_url)
             except Exception:
-                # Don't block update if delete fails
                 pass
 
-        product.image_url = await upload_to_cloudinary(image, folder="ekabhumi/products")
+        product.image_url = await upload_to_cloudinary(
+            image, folder="ekabhumi/products"
+        )
 
     db.commit()
     db.refresh(product)
+
+    # -----------------------------
+    # DISCOUNT CALCULATION
+    # -----------------------------
+    discount_percent = (
+        round((product.original_price - product.price) / product.original_price * 100)
+        if product.original_price and product.price
+        else 0
+    )
 
     return {
         "status": "success",
@@ -167,10 +286,12 @@ async def update_product(
             "id": product.id,
             "name": product.name,
             "price": float(product.price) if product.price else 0.0,
+            "original_price": float(product.original_price) if product.original_price else None,
+            "discount_percent": discount_percent,
             "description": product.description or "",
             "quantity": int(product.quantity or 0),
             "image_url": product.image_url or "",
-            "priority": product.priority or 100,
+            "priority": product.priority if product.priority in [1, 2] else 2,
         },
     }
 
