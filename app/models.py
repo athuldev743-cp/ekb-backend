@@ -2,6 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text, VARCHAR, Index, Boolean, func
 from app.database import Base
+from sqlalchemy import Column, Integer, String, Text, Numeric, CheckConstraint
 
 
 class User(Base):
@@ -20,13 +21,27 @@ class Product(Base):
     __tablename__ = "products"
 
     id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, nullable=False)
-    description = Column(String, nullable=True)
-    price = Column(Float, nullable=False)  # This is the ACTIVE/OFFER price
-    original_price = Column(Float, nullable=True)  # NEW: The Strikethrough/MRP price
+
+    name = Column(String(255), nullable=False)
+
+    description = Column(Text, nullable=True)
+
+    price = Column(Numeric(10, 2), nullable=False)
+    original_price = Column(Numeric(10, 2), nullable=True)
+
     quantity = Column(Integer, default=0, nullable=False)
-    image_url = Column(VARCHAR, nullable=True)
-    priority = Column(Integer, default=100, nullable=False)
+
+    image_url = Column(String(500), nullable=True)
+
+    priority = Column(Integer, default=2, nullable=False, index=True)
+
+    __table_args__ = (
+        CheckConstraint("price > 0", name="price_positive"),
+        CheckConstraint(
+            "original_price IS NULL OR original_price >= price",
+            name="valid_discount"
+        ),
+    )
 
 class Order(Base):
     __tablename__ = "orders"
