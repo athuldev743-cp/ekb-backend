@@ -22,11 +22,11 @@ class Product(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     description = Column(String, nullable=True)
-    price = Column(Float, nullable=False)
+    price = Column(Float, nullable=False)  # This is the ACTIVE/OFFER price
+    original_price = Column(Float, nullable=True)  # NEW: The Strikethrough/MRP price
     quantity = Column(Integer, default=0, nullable=False)
     image_url = Column(VARCHAR, nullable=True)
     priority = Column(Integer, default=100, nullable=False)
-
 
 class Order(Base):
     __tablename__ = "orders"
