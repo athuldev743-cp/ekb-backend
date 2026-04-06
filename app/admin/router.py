@@ -29,7 +29,8 @@ async def _validate_image_upload(image: UploadFile) -> None:
 
     content_type = (image.content_type or "").lower()
     if content_type not in ALLOWED_IMAGE_TYPES:
-        raise HTTPException(status_code=400, detail="Invalid image type. Use JPEG/PNG/WebP")
+        raise HTTPException(
+            status_code=400, detail="Invalid image type. Use JPEG/PNG/WebP")
 
     # Read a small chunk to ensure file isn't empty and to estimate size
     contents = await image.read()
@@ -37,7 +38,8 @@ async def _validate_image_upload(image: UploadFile) -> None:
         raise HTTPException(status_code=400, detail="Empty image file")
 
     if len(contents) > MAX_IMAGE_BYTES:
-        raise HTTPException(status_code=400, detail="Image too large (max 5MB)")
+        raise HTTPException(
+            status_code=400, detail="Image too large (max 5MB)")
 
     # Reset file pointer so Cloudinary uploader can read it again
     await image.seek(0)
@@ -66,7 +68,8 @@ async def create_product(
             raise HTTPException(status_code=400, detail="Name is required")
 
         if price <= 0:
-            raise HTTPException(status_code=400, detail="Price must be greater than 0")
+            raise HTTPException(
+                status_code=400, detail="Price must be greater than 0")
 
         if original_price is not None:
             if original_price < price:
@@ -76,13 +79,15 @@ async def create_product(
                 )
 
         if quantity < 0:
-            raise HTTPException(status_code=400, detail="Quantity cannot be negative")
+            raise HTTPException(
+                status_code=400, detail="Quantity cannot be negative")
 
         if priority not in [1, 2]:
             priority = 2  # fallback
 
         if not description.strip():
-            raise HTTPException(status_code=400, detail="Description is required")
+            raise HTTPException(
+                status_code=400, detail="Description is required")
 
         # -----------------------------
         # IMAGE VALIDATION + UPLOAD
@@ -111,7 +116,8 @@ async def create_product(
         # OPTIONAL: DISCOUNT CALCULATION
         # -----------------------------
         discount_percent = (
-            round((product.original_price - product.price) / product.original_price * 100)
+            round((product.original_price - product.price) /
+                  product.original_price * 100)
             if product.original_price and product.price
             else 0
         )
@@ -181,12 +187,14 @@ def get_admin_products(
 # -----------------------------
 # UPDATE PRODUCT
 # -----------------------------
+
+
 @router.put("/update-product/{product_id}")
 async def update_product(
     product_id: int,
     name: Optional[str] = Form(None),
     price: Optional[float] = Form(None),
-    original_price: Optional[float] = Form(None),  # ✅ ADDED
+    original_price: Optional[str] = Form(None),
     description: Optional[str] = Form(None),
     priority: Optional[int] = Form(None),
     quantity: Optional[int] = Form(None),
@@ -199,24 +207,10 @@ async def update_product(
         raise HTTPException(status_code=404, detail="Product not found")
 
     # -----------------------------
-    # VALIDATION (BEFORE UPDATE)
+    # VALIDATION
     # -----------------------------
-    if price is not None:
-        if price <= 0:
-            raise HTTPException(status_code=400, detail="Price must be greater than 0")
-
-    # Determine final values for validation
-    final_price = price if price is not None else product.price
-    final_original_price = (
-        original_price if original_price is not None else product.original_price
-    )
-
-    if final_original_price is not None:
-        if final_original_price < final_price:
-            raise HTTPException(
-                status_code=400,
-                detail="Original price must be greater than or equal to selling price"
-            )
+    if price is not None and price <= 0:
+        raise HTTPException(status_code=400, detail="Price must be greater than 0")
 
     if quantity is not None and quantity < 0:
         raise HTTPException(status_code=400, detail="Quantity cannot be negative")
@@ -231,6 +225,33 @@ async def update_product(
         raise HTTPException(status_code=400, detail="Description cannot be empty")
 
     # -----------------------------
+    # DETERMINE FINAL VALUES
+    # -----------------------------
+    final_price = price if price is not None else float(product.price)
+
+    # Handle original_price properly
+    final_original_price = product.original_price
+
+    if original_price is not None:
+        if original_price == "":
+            final_original_price = None
+        else:
+            try:
+                final_original_price = float(original_price)
+            except:
+                raise HTTPException(status_code=400, detail="Invalid original price")
+
+    # -----------------------------
+    # VALIDATE PRICE RELATION
+    # -----------------------------
+    if final_original_price is not None:
+        if final_original_price < final_price:
+            raise HTTPException(
+                status_code=400,
+                detail="Original price must be greater than or equal to selling price"
+            )
+
+    # -----------------------------
     # APPLY UPDATES
     # -----------------------------
     if name is not None:
@@ -240,7 +261,10 @@ async def update_product(
         product.price = price
 
     if original_price is not None:
-        product.original_price = original_price  # ✅ FIXED
+        if original_price == "":
+            product.original_price = None
+        else:
+            product.original_price = float(original_price)
 
     if description is not None:
         product.description = description.strip()
@@ -285,7 +309,7 @@ async def update_product(
         "product": {
             "id": product.id,
             "name": product.name,
-            "price": float(product.price) if product.price else 0.0,
+            "price": float(product.price),
             "original_price": float(product.original_price) if product.original_price else None,
             "discount_percent": discount_percent,
             "description": product.description or "",
